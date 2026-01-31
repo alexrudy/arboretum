@@ -1,67 +1,38 @@
 <script lang="ts">
 	import type { LogOrSpan } from '$lib/api';
-	import { formatTimestamp, formatTimestampFull, getLevelColor } from '$lib/utils';
+	import LevelBadge from './ui/LevelBadge.svelte';
+	import TargetLabel from './ui/TargetLabel.svelte';
+	import TimestampLabel from './ui/TimestampLabel.svelte';
 
 	let {
 		record,
 		expanded = $bindable(false),
 		onclick
 	}: { record: LogOrSpan; expanded?: boolean; onclick?: () => void } = $props();
-
-	let levelColor = $derived(getLevelColor(record.level));
-	let timestamp = $derived(formatTimestamp(record.timestamp));
-	let fullTimestamp = $derived(formatTimestampFull(record.timestamp));
 </script>
 
 <div class="list-group-item list-group-item-action">
 	<button type="button" class="list-group-item-button d-flex align-items-center gap-3" {onclick}>
-		<div class="text-muted small" style="min-width: 230px;" title={fullTimestamp}>
-			<i class="bi bi-clock"></i>
-			{timestamp}
-		</div>
+		<TimestampLabel timestamp={record.timestamp} />
 
 		{#if record.type === 'log'}
-			<span class="badge bg-{levelColor}" style="min-width: 60px;">
-				{record.level || 'NONE'}
-			</span>
-			<div
-				class="text-muted small"
-				style="min-width: 200px; overflow: hidden; text-overflow: ellipsis;"
-			>
-				<i class="bi bi-code-slash"></i>
-				{record.target || 'unknown'}
-			</div>
+			<LevelBadge level={record.level} />
+			<TargetLabel target={record.target} />
 			<div class="flex-grow-1">
 				{record.message || '(no message)'}
 			</div>
 			<i class="bi bi-file-text text-info"></i>
 		{:else if record.type === 'span'}
-			<span class="badge bg-{levelColor}" style="min-width: 60px;">
-				{record.level || 'NONE'}
-			</span>
-			<div
-				class="text-muted small"
-				style="min-width: 200px; overflow: hidden; text-overflow: ellipsis;"
-			>
-				<i class="bi bi-code-slash"></i>
-				{record.target || 'unknown'}
-			</div>
+			<LevelBadge level={record.level} />
+			<TargetLabel target={record.target} />
 			<div class="flex-grow-1">
 				<i class="bi bi-diagram-3 text-warning me-2"></i>
 				<strong>{record.name}</strong>
 			</div>
 			<i class="bi bi-box text-info"></i>
 		{:else if record.type === 'event'}
-			<span class="badge bg-{levelColor}" style="min-width: 60px;">
-				{record.level || 'NONE'}
-			</span>
-			<div
-				class="text-muted small"
-				style="min-width: 200px; overflow: hidden; text-overflow: ellipsis;"
-			>
-				<i class="bi bi-code-slash"></i>
-				{record.target || 'unknown'}
-			</div>
+			<LevelBadge level={record.level} />
+			<TargetLabel target={record.target} />
 			<div class="flex-grow-1">
 				<i class="bi bi-lightning-fill me-2" style="color: var(--brand-cyan);"></i>
 				<strong>{record.name}</strong>
@@ -85,10 +56,5 @@
 		background-color: transparent;
 		color: inherit;
 		text-decoration: none;
-	}
-
-	.badge {
-		font-size: 0.75rem;
-		font-weight: 600;
 	}
 </style>

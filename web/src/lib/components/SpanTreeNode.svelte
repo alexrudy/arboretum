@@ -114,6 +114,23 @@
 		background-color: transparent;
 		color: inherit;
 		text-decoration: none;
+		padding: 0;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		cursor: pointer;
+		transition: opacity 0.2s;
+	}
+
+	.span-link:hover {
+		opacity: 0.8;
+		text-decoration: underline;
+	}
+
+	.span-link:focus {
+		outline: 2px solid var(--brand-cyan);
+		outline-offset: 2px;
+		border-radius: 2px;
 	}
 
 	.current-span {

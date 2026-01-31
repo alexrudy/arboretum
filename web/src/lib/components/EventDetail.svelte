@@ -1,10 +1,12 @@
 <script lang="ts">
 	import type { EventRecord } from '$lib/api';
-	import { formatTimestamp, formatTimestampFull, getLevelColor } from '$lib/utils';
+	import LevelBadge from './ui/LevelBadge.svelte';
+	import DetailItem from './ui/DetailItem.svelte';
+	import AttributesDisplay from './ui/AttributesDisplay.svelte';
+	import { formatTimestamp, formatTimestampFull } from '$lib/utils';
 
 	let { record: event }: { record: EventRecord } = $props();
 
-	let levelColor = $derived(getLevelColor(event.level));
 	let timestamp = $derived(formatTimestamp(event.timestamp));
 	let fullTimestamp = $derived(formatTimestampFull(event.timestamp));
 </script>
@@ -15,60 +17,48 @@
 			<i class="bi bi-lightning-fill" style="color: var(--brand-cyan);"></i>
 			<strong>Span Event:</strong>
 			<span>{event.name}</span>
-			<span class="badge bg-{levelColor} ms-auto">{event.level || 'NONE'}</span>
+			<span class="ms-auto"><LevelBadge level={event.level} /></span>
 		</div>
 	</div>
 	<div class="card-body">
 		<div class="row g-3">
 			<div class="col-md-6">
-				<div class="detail-item">
-					<strong>Timestamp:</strong>
+				<DetailItem label="Timestamp">
 					<span title={fullTimestamp}>{timestamp}</span>
-				</div>
+				</DetailItem>
 			</div>
 
 			<div class="col-md-6">
-				<div class="detail-item">
-					<strong>Span ID:</strong>
+				<DetailItem label="Span ID">
 					<code class="text-info">{event.span_id}</code>
-				</div>
+				</DetailItem>
 			</div>
 
 			<div class="col-md-6">
-				<div class="detail-item">
-					<strong>Trace ID:</strong>
+				<DetailItem label="Trace ID">
 					<code class="text-info">{event.trace_id}</code>
-				</div>
+				</DetailItem>
 			</div>
 
 			{#if event.service_name}
 				<div class="col-md-6">
-					<div class="detail-item">
-						<strong>Service:</strong>
-						<span>{event.service_name}</span>
-					</div>
+					<DetailItem label="Service">
+						{event.service_name}
+					</DetailItem>
 				</div>
 			{/if}
 
 			{#if event.target}
 				<div class="col-md-6">
-					<div class="detail-item">
-						<strong>Target:</strong>
+					<DetailItem label="Target">
 						<code>{event.target}</code>
-					</div>
+					</DetailItem>
 				</div>
 			{/if}
 
 			{#if event.attributes && Object.keys(event.attributes).length > 0}
 				<div class="col-12">
-					<div class="detail-item">
-						<strong>Attributes:</strong>
-						<pre class="bg-darker p-2 rounded mt-2">{JSON.stringify(
-								event.attributes,
-								null,
-								2
-							)}</pre>
-					</div>
+					<AttributesDisplay attrs={event.attributes} />
 				</div>
 			{/if}
 		</div>
