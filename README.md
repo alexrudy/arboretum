@@ -24,7 +24,7 @@ cargo build --release
 Create a `config.toml` file (see `config.example.toml`):
 
 ```toml
-listen_addr = "0.0.0.0:4317"
+listen_addr = "0.0.0.0:3333"
 db_path = "arboretum.db"
 max_retention_seconds = 7200
 cleanup_interval_seconds = 300
@@ -58,7 +58,7 @@ arboretum --config /path/to/config.toml
 
 Available options:
 
-- `listen_addr` (string): Address to bind the server (default: `"0.0.0.0:4317"`)
+- `listen_addr` (string): Address to bind the server (default: `"0.0.0.0:3333"`)
 - `db_path` (string): Path to SQLite database file (default: `"arboretum.db"`)
 - `max_retention_seconds` (integer): Maximum age of records in seconds (default: `7200` - 2 hours)
 - `cleanup_interval_seconds` (integer): Interval between cleanup runs (default: `300` - 5 minutes)
@@ -124,16 +124,16 @@ RUST_LOG=arboretum=debug,tower_http=debug arboretum --config config.toml
 
 ```bash
 # Query all ERROR logs
-curl "http://localhost:4317/api/v1/logs?level=ERROR"
+curl "http://localhost:3333/api/v1/logs?level=ERROR"
 
 # Query logs for a specific service
-curl "http://localhost:4317/api/v1/logs?service_name=my-service"
+curl "http://localhost:3333/api/v1/logs?service_name=my-service"
 
 # Query spans for a trace (includes all child spans recursively)
-curl "http://localhost:4317/api/v1/spans?trace_id=abc123"
+curl "http://localhost:3333/api/v1/spans?trace_id=abc123"
 
 # Get database statistics
-curl "http://localhost:4317/api/v1/metadata"
+curl "http://localhost:3333/api/v1/metadata"
 ```
 
 ## OpenTelemetry Integration
@@ -153,7 +153,7 @@ async fn main() {
         .with_exporter(
             opentelemetry_otlp::new_exporter()
                 .tonic()
-                .with_endpoint("http://localhost:4317")
+                .with_endpoint("http://localhost:3333")
         )
         .install_batch(opentelemetry_sdk::runtime::Tokio)
         .unwrap();

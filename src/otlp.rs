@@ -32,7 +32,11 @@ pub fn convert_otlp_logs(request: ExportLogsServiceRequest) -> Vec<LogRecord> {
                 for attr in &log_record.attributes {
                     if attr.key == "code.target" || attr.key == "target" {
                         target = extract_string_value(attr);
-                    } else if let Some(value) = attribute_to_json_value(attr) {
+                        // Keep target in attributes too
+                    }
+
+                    // Add all attributes to the attributes map
+                    if let Some(value) = attribute_to_json_value(attr) {
                         attributes_map.insert(attr.key.clone(), value);
                     }
                 }
@@ -83,6 +87,17 @@ pub fn convert_otlp_traces(request: ExportTraceServiceRequest) -> Vec<SpanRecord
         });
 
         for scope_span in resource_span.scope_spans {
+            // Check if the scope has level information in its name
+            let scope_level = scope_span.scope.as_ref().and_then(|scope| {
+                // Try to extract level from scope name (e.g., "my_module::info")
+                if let Some(idx) = scope.name.rfind("::") {
+                    let potential_level = &scope.name[idx + 2..];
+                    potential_level.parse::<Level>().ok()
+                } else {
+                    None
+                }
+            });
+
             for span in scope_span.spans {
                 let span_id_hex = hex::encode(&span.span_id);
                 let trace_id_hex = hex::encode(&span.trace_id);
@@ -97,13 +112,31 @@ pub fn convert_otlp_traces(request: ExportTraceServiceRequest) -> Vec<SpanRecord
                 let mut attributes_map = serde_json::Map::new();
 
                 for attr in &span.attributes {
-                    if attr.key == "level" {
+                    // Check for level in various attribute keys used by tracing-opentelemetry
+                    if attr.key == "level"
+                        || attr.key == "otel.level"
+                        || attr.key == "log.level"
+                        || attr.key == "log.severity"
+                        || attr.key == "severity"
+                    {
                         level = extract_string_value(attr).and_then(|s| s.parse().ok());
-                    } else if attr.key == "code.target" || attr.key == "target" {
+                        // Keep level in attributes too
+                    }
+
+                    if attr.key == "code.target" || attr.key == "target" {
                         target = extract_string_value(attr);
-                    } else if let Some(value) = attribute_to_json_value(attr) {
+                        // Keep target in attributes too
+                    }
+
+                    // Add all attributes to the attributes map
+                    if let Some(value) = attribute_to_json_value(attr) {
                         attributes_map.insert(attr.key.clone(), value);
                     }
+                }
+
+                // If level wasn't found in attributes, use scope level as fallback
+                if level.is_none() {
+                    level = scope_level;
                 }
 
                 let attributes = if !attributes_map.is_empty() {

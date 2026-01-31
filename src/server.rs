@@ -1,7 +1,7 @@
 use crate::config::Config;
 use crate::db::Database;
 use crate::handlers::{
-    AppState, export_logs, export_traces, get_metadata, query_logs, query_spans,
+    AppState, export_logs, export_traces, get_metadata, query_logs, query_records, query_spans,
 };
 use axum::{
     Router,
@@ -10,6 +10,7 @@ use axum::{
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time;
+use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::{error, info};
 
@@ -17,13 +18,18 @@ use tracing::{error, info};
 pub fn create_router(db: Database) -> Router {
     let state = Arc::new(AppState::new(db));
 
+    // Create a permissive CORS layer for development
+    let cors = CorsLayer::permissive();
+
     Router::new()
         .route("/v1/logs", post(export_logs))
         .route("/v1/traces", post(export_traces))
         .route("/api/v1/logs", get(query_logs))
         .route("/api/v1/spans", get(query_spans))
+        .route("/api/v1/records", get(query_records))
         .route("/api/v1/metadata", get(get_metadata))
         .with_state(state)
+        .layer(cors)
         .layer(TraceLayer::new_for_http())
 }
 

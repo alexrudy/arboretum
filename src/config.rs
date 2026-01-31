@@ -46,7 +46,7 @@ impl Default for Config {
 }
 
 fn default_listen_addr() -> String {
-    "0.0.0.0:4317".to_string()
+    "0.0.0.0:3333".to_string()
 }
 
 fn default_db_path() -> PathBuf {
@@ -155,7 +155,7 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = Config::default();
-        assert_eq!(config.listen_addr, "0.0.0.0:4317");
+        assert_eq!(config.listen_addr, "0.0.0.0:3333");
         assert_eq!(config.max_retention_seconds, 7200);
         assert_eq!(config.cleanup_interval_seconds, 300);
     }

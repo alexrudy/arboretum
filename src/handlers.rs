@@ -221,6 +221,144 @@ pub async fn get_metadata(
     Ok(Json(stats))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct RecordQueryParams {
+    pub service_name: Option<String>,
+    pub level: Option<String>,
+    pub target: Option<String>,
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum RecordResponse {
+    Log {
+        timestamp: i64,
+        service_name: Option<String>,
+        level: Option<Level>,
+        target: Option<String>,
+        message: Option<String>,
+        span_id: Option<String>,
+        trace_id: Option<String>,
+        attributes: Option<serde_json::Value>,
+    },
+    Span {
+        timestamp: i64,
+        trace_id: String,
+        span_id: String,
+        parent_span_id: Option<String>,
+        service_name: Option<String>,
+        name: String,
+        kind: Option<String>,
+        start_time: i64,
+        end_time: Option<i64>,
+        level: Option<Level>,
+        target: Option<String>,
+        attributes: Option<serde_json::Value>,
+        events: Option<serde_json::Value>,
+        status: Option<String>,
+    },
+}
+
+pub async fn query_records(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<RecordQueryParams>,
+) -> Result<Json<Vec<RecordResponse>>, AppError> {
+    let level = params
+        .level
+        .as_ref()
+        .map(|s| s.parse::<Level>())
+        .transpose()
+        .map_err(|e| AppError::BadRequest(format!("Invalid level: {}", e)))?;
+
+    // Query logs
+    let log_filter = LogFilter {
+        service_name: params.service_name.clone(),
+        level,
+        target: params.target.clone(),
+        message: None,
+        span_id: None,
+        limit: params.limit,
+    };
+
+    let logs = state
+        .db
+        .query_logs(log_filter)
+        .await
+        .map_err(|e| AppError::Internal(format!("Database error: {}", e)))?;
+
+    // Query spans
+    let span_filter = SpanFilter {
+        service_name: params.service_name,
+        level,
+        target: params.target,
+        span_id: None,
+        trace_id: None,
+        limit: params.limit,
+    };
+
+    let spans = state
+        .db
+        .query_spans(span_filter)
+        .await
+        .map_err(|e| AppError::Internal(format!("Database error: {}", e)))?;
+
+    // Convert to unified response format
+    let mut records: Vec<RecordResponse> = Vec::new();
+
+    for log in logs {
+        records.push(RecordResponse::Log {
+            timestamp: log.timestamp,
+            service_name: log.service_name,
+            level: log.level,
+            target: log.target,
+            message: log.message,
+            span_id: log.span_id,
+            trace_id: log.trace_id,
+            attributes: log.attributes.and_then(|a| serde_json::from_str(&a).ok()),
+        });
+    }
+
+    for span in spans {
+        records.push(RecordResponse::Span {
+            timestamp: span.start_time,
+            trace_id: span.trace_id,
+            span_id: span.span_id,
+            parent_span_id: span.parent_span_id,
+            service_name: span.service_name,
+            name: span.name,
+            kind: span.kind,
+            start_time: span.start_time,
+            end_time: span.end_time,
+            level: span.level,
+            target: span.target,
+            attributes: span.attributes.and_then(|a| serde_json::from_str(&a).ok()),
+            events: span.events.and_then(|e| serde_json::from_str(&e).ok()),
+            status: span.status,
+        });
+    }
+
+    // Sort by timestamp descending
+    records.sort_by(|a, b| {
+        let ts_a = match a {
+            RecordResponse::Log { timestamp, .. } => *timestamp,
+            RecordResponse::Span { timestamp, .. } => *timestamp,
+        };
+        let ts_b = match b {
+            RecordResponse::Log { timestamp, .. } => *timestamp,
+            RecordResponse::Span { timestamp, .. } => *timestamp,
+        };
+        ts_b.cmp(&ts_a)
+    });
+
+    // Apply limit if specified
+    if let Some(limit) = params.limit {
+        records.truncate(limit as usize);
+    }
+
+    Ok(Json(records))
+}
+
 #[derive(Debug)]
 pub enum AppError {
     BadRequest(String),

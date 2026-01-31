@@ -1,0 +1,43 @@
+{
+  "dt": 1769826048.996866,
+  "resource": {
+    "attributes": {
+      "service.version": "0.1.0",
+      "deployment.environment.name": "staging",
+      "telemetry.sdk.version": "0.30.0",
+      "service.name": "intermodal",
+      "telemetry.sdk.name": "opentelemetry",
+      "telemetry.sdk.language": "rust"
+    }
+  },
+  "scope": {
+    "name": "intermodal-serving"
+  },
+  "span": {
+    "trace_id": "eafd50c683207a0a3e54ba909586aacc",
+    "span_id": "a7bdfde575f1b267",
+    "root": true,
+    "name": "name: hostname.bind. type: TXT class: CH",
+    "kind": "server",
+    "start_time_unix_nano": 1769826048996865800,
+    "end_time_unix_nano": 1769826048997136600,
+    "duration": 0.000270898,
+    "attributes": {
+      "code.filepath": "intermodal-server/src/dns/trace.rs",
+      "code.namespace": "intermodal::dns::trace",
+      "code.lineno": 45,
+      "thread.id": 5,
+      "thread.name": "tokio-runtime-worker",
+      "level": "INFO",
+      "dns.query": "name: hostname.bind. type: TXT class: CH",
+      "dns.type": "QUERY",
+      "dns.op": "QUERY",
+      "dns.id": "42888",
+      "dns.latency": "0",
+      "dns.status": "Query Refused",
+      "net.outcome": "failure",
+      "busy_ns": 231418,
+      "idle_ns": 41653
+    }
+  }
+}
