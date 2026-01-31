@@ -2,7 +2,7 @@
 	import type { EventRecord } from '$lib/api';
 	import { formatTimestamp, formatTimestampFull, getLevelColor } from '$lib/utils';
 
-	let { event }: { event: EventRecord } = $props();
+	let { record: event }: { record: EventRecord } = $props();
 
 	let levelColor = $derived(getLevelColor(event.level));
 	let timestamp = $derived(formatTimestamp(event.timestamp));
@@ -64,10 +64,10 @@
 					<div class="detail-item">
 						<strong>Attributes:</strong>
 						<pre class="bg-darker p-2 rounded mt-2">{JSON.stringify(
-							event.attributes,
-							null,
-							2
-						)}</pre>
+								event.attributes,
+								null,
+								2
+							)}</pre>
 					</div>
 				</div>
 			{/if}

@@ -1,13 +1,19 @@
 <script lang="ts">
-	import type { SpanRecord, EventRecord } from '$lib/api';
+	import type { SpanRecord, EventRecord, LogOrSpan } from '$lib/api';
 	import type { TreeNode } from '$lib/types';
 	import SpanTreeNode from './SpanTreeNode.svelte';
 
 	let {
 		spans,
 		events,
-		currentSpanId
-	}: { spans: SpanRecord[]; events: EventRecord[]; currentSpanId: string } = $props();
+		currentSpanId,
+		handleRecordClick
+	}: {
+		spans: SpanRecord[];
+		events: EventRecord[];
+		currentSpanId: string;
+		handleRecordClick: (span: LogOrSpan) => void;
+	} = $props();
 
 	// Calculate timeline bounds for the entire trace
 	function calculateTimelineBounds(
@@ -84,7 +90,7 @@
 
 <div class="span-tree">
 	{#each tree as node}
-		<SpanTreeNode {node} {currentSpanId} {timeline} depth={0} />
+		<SpanTreeNode {node} {currentSpanId} {timeline} {handleRecordClick} depth={0} />
 	{/each}
 </div>
 

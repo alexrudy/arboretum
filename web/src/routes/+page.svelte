@@ -298,9 +298,9 @@
 									{#if record.type === 'log'}
 										<LogDetail log={record} />
 									{:else if record.type === 'span'}
-										<SpanDetail span={record} />
+										<SpanDetail span={record} {handleRecordClick} />
 									{:else if record.type === 'event'}
-										<EventDetail event={record} />
+										<EventDetail {record} />
 									{/if}
 								</div>
 							{/if}

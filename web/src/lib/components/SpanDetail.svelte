@@ -1,11 +1,14 @@
 <script lang="ts">
-	import type { SpanRecord, EventRecord } from '$lib/api';
+	import type { SpanRecord, EventRecord, LogOrSpan } from '$lib/api';
 	import { api } from '$lib/api';
 	import { formatDuration } from '$lib/utils';
 	import SpanTree from './SpanTree.svelte';
 	import SpanEventList from './SpanEventList.svelte';
 
-	let { span }: { span: SpanRecord } = $props();
+	let {
+		span,
+		handleRecordClick
+	}: { span: SpanRecord; handleRecordClick: (record: LogOrSpan) => void } = $props();
 
 	let allSpans = $state<SpanRecord[]>([]);
 	let allEvents = $state<EventRecord[]>([]);
@@ -50,7 +53,12 @@
 			<div class="mb-3">
 				<strong class="text-info">Trace Tree:</strong>
 				<div class="mt-2 p-3 bg-darker rounded">
-					<SpanTree spans={allSpans} events={allEvents} currentSpanId={span.span_id} />
+					<SpanTree
+						spans={allSpans}
+						events={allEvents}
+						currentSpanId={span.span_id}
+						{handleRecordClick}
+					/>
 				</div>
 			</div>
 		{:else}

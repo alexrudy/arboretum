@@ -1,24 +1,27 @@
 <script lang="ts">
+	import type { LogOrSpan } from '$lib/api';
 	import type { TreeNode } from '$lib/types';
+	import Self from './SpanTreeNode.svelte';
 	import { formatDuration, getLevelColor } from '$lib/utils';
 
 	let {
 		node,
 		currentSpanId,
 		timeline,
-		depth
+		depth,
+		handleRecordClick
 	}: {
 		node: TreeNode;
 		currentSpanId: string;
 		timeline: { start: number; end: number; duration: number };
 		depth: number;
+		handleRecordClick: (span: LogOrSpan) => void;
 	} = $props();
 
 	let duration = $derived(formatDuration(node.span.start_time, node.span.end_time));
 	let levelColor = $derived(getLevelColor(node.span.level));
 	let isCurrentSpan = $derived(node.span.span_id === currentSpanId);
 	let indent = $derived(depth * 20);
-
 	// Calculate timeline bar position and width
 	let timelineBar = $derived.by(() => {
 		if (timeline.duration === 0) {
@@ -56,13 +59,15 @@
 			{#if depth > 0}
 				<span class="tree-line text-muted">└─</span>
 			{/if}
-			<i class="bi bi-box-fill text-warning"></i>
-			<span class="badge bg-{levelColor}">{node.span.level || 'NONE'}</span>
-			<strong>{node.span.name}</strong>
-			<span class="text-muted small">({duration})</span>
-			{#if isCurrentSpan}
-				<i class="bi bi-arrow-left text-info"></i>
-			{/if}
+			<button type="button" class="span-link" onclick={() => handleRecordClick(node.span)}>
+				<i class="bi bi-box-fill text-warning"></i>
+				<span class="badge bg-{levelColor}">{node.span.level || 'NONE'}</span>
+				<strong>{node.span.name}</strong>
+				<span class="text-muted small">({duration})</span>
+				{#if isCurrentSpan}
+					<i class="bi bi-arrow-left text-info"></i>
+				{/if}
+			</button>
 		</div>
 
 		<!-- Timeline visualization -->
@@ -94,7 +99,7 @@
 	{/each}
 
 	{#each node.children as child}
-		<svelte:self node={child} {currentSpanId} {timeline} depth={depth + 1} />
+		<Self node={child} {currentSpanId} {timeline} {handleRecordClick} depth={depth + 1} />
 	{/each}
 </div>
 
@@ -102,6 +107,13 @@
 	.span-item {
 		padding: 2px 4px;
 		border-radius: 3px;
+	}
+
+	.span-link {
+		border: none;
+		background-color: transparent;
+		color: inherit;
+		text-decoration: none;
 	}
 
 	.current-span {
