@@ -2,9 +2,38 @@ import type { Level } from './api';
 
 export function formatTimestamp(nanos: number): string {
 	// Convert nanoseconds to milliseconds
-	const ms = Math.floor(nanos / 1_000_000);
+	const ms = nanos / 1_000_000;
 	const date = new Date(ms);
-	return date.toLocaleString();
+
+	// Format with millisecond precision
+	const dateStr = date.toLocaleDateString();
+	const hours = date.getHours().toString().padStart(2, '0');
+	const minutes = date.getMinutes().toString().padStart(2, '0');
+	const seconds = date.getSeconds().toString().padStart(2, '0');
+	const milliseconds = Math.floor(date.getMilliseconds()).toString().padStart(3, '0');
+
+	return `${dateStr} ${hours}:${minutes}:${seconds}.${milliseconds}`;
+}
+
+export function formatTimestampFull(nanos: number): string {
+	// Convert nanoseconds to milliseconds for Date object
+	const ms = nanos / 1_000_000;
+	const date = new Date(ms);
+
+	// Get the fractional part in microseconds and nanoseconds
+	const microseconds = Math.floor((nanos / 1_000) % 1_000)
+		.toString()
+		.padStart(3, '0');
+	const nanosecondsPart = (nanos % 1_000).toString().padStart(3, '0');
+
+	// Format with full precision
+	const dateStr = date.toLocaleDateString();
+	const hours = date.getHours().toString().padStart(2, '0');
+	const minutes = date.getMinutes().toString().padStart(2, '0');
+	const seconds = date.getSeconds().toString().padStart(2, '0');
+	const milliseconds = Math.floor(date.getMilliseconds()).toString().padStart(3, '0');
+
+	return `${dateStr} ${hours}:${minutes}:${seconds}.${milliseconds}.${microseconds}.${nanosecondsPart}`;
 }
 
 export function getLevelColor(level: Level | null): string {
@@ -36,7 +65,7 @@ export function formatBytes(bytes: number | null): string {
 	const sizes = ['Bytes', 'KB', 'MB', 'GB'];
 	const i = Math.floor(Math.log(bytes) / Math.log(k));
 
-	return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+	return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
 }
 
 export function formatDuration(startNanos: number, endNanos: number | null): string {

@@ -36,6 +36,31 @@ impl Level {
             _ => None,
         }
     }
+
+    /// Convert level to integer for database storage (lower number = lower severity)
+    pub fn to_int(&self) -> i32 {
+        match self {
+            Level::Trace => 0,
+            Level::Debug => 1,
+            Level::Info => 2,
+            Level::Warn => 3,
+            Level::Error => 4,
+            Level::Fatal => 5,
+        }
+    }
+
+    /// Convert integer back to Level (for database retrieval)
+    pub fn from_int(value: i32) -> Option<Self> {
+        match value {
+            0 => Some(Level::Trace),
+            1 => Some(Level::Debug),
+            2 => Some(Level::Info),
+            3 => Some(Level::Warn),
+            4 => Some(Level::Error),
+            5 => Some(Level::Fatal),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for Level {
@@ -102,5 +127,41 @@ mod tests {
         assert!(Level::Info < Level::Warn);
         assert!(Level::Warn < Level::Error);
         assert!(Level::Error < Level::Fatal);
+    }
+
+    #[test]
+    fn test_level_to_int() {
+        assert_eq!(Level::Trace.to_int(), 0);
+        assert_eq!(Level::Debug.to_int(), 1);
+        assert_eq!(Level::Info.to_int(), 2);
+        assert_eq!(Level::Warn.to_int(), 3);
+        assert_eq!(Level::Error.to_int(), 4);
+        assert_eq!(Level::Fatal.to_int(), 5);
+    }
+
+    #[test]
+    fn test_level_from_int() {
+        assert_eq!(Level::from_int(0), Some(Level::Trace));
+        assert_eq!(Level::from_int(1), Some(Level::Debug));
+        assert_eq!(Level::from_int(2), Some(Level::Info));
+        assert_eq!(Level::from_int(3), Some(Level::Warn));
+        assert_eq!(Level::from_int(4), Some(Level::Error));
+        assert_eq!(Level::from_int(5), Some(Level::Fatal));
+        assert_eq!(Level::from_int(6), None);
+        assert_eq!(Level::from_int(-1), None);
+    }
+
+    #[test]
+    fn test_level_roundtrip() {
+        for level in [
+            Level::Trace,
+            Level::Debug,
+            Level::Info,
+            Level::Warn,
+            Level::Error,
+            Level::Fatal,
+        ] {
+            assert_eq!(Level::from_int(level.to_int()), Some(level));
+        }
     }
 }

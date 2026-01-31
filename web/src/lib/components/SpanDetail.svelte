@@ -1,33 +1,42 @@
 <script lang="ts">
-	import type { SpanRecord } from '$lib/api';
+	import type { SpanRecord, EventRecord } from '$lib/api';
 	import { api } from '$lib/api';
 	import { formatDuration } from '$lib/utils';
 	import SpanTree from './SpanTree.svelte';
+	import SpanEventList from './SpanEventList.svelte';
 
-	export let span: SpanRecord;
+	let { span }: { span: SpanRecord } = $props();
 
-	let allSpans: SpanRecord[] = [];
-	let loading = true;
+	let allSpans = $state<SpanRecord[]>([]);
+	let allEvents = $state<EventRecord[]>([]);
+	let loading = $state(true);
 
-	// Load all spans in the trace to build the tree
-	async function loadTraceSpans() {
+	// Load all spans and events in the trace to build the tree
+	async function loadTraceData() {
 		try {
-			const spans = await api.getSpans({ trace_id: span.trace_id });
+			const [spans, events] = await Promise.all([
+				api.getSpans({ trace_id: span.trace_id }),
+				api.getEvents({ trace_id: span.trace_id })
+			]);
 			allSpans = spans as SpanRecord[];
+			allEvents = events;
 		} catch (error) {
-			console.error('Failed to load trace spans:', error);
+			console.error('Failed to load trace data:', error);
 			allSpans = [span];
+			allEvents = [];
 		} finally {
 			loading = false;
 		}
 	}
 
-	$: if (span) {
-		loading = true;
-		loadTraceSpans();
-	}
+	$effect(() => {
+		if (span) {
+			loading = true;
+			loadTraceData();
+		}
+	});
 
-	$: duration = formatDuration(span.start_time, span.end_time);
+	let duration = $derived(formatDuration(span.start_time, span.end_time));
 </script>
 
 <div class="card mt-2 mb-3">
@@ -41,7 +50,7 @@
 			<div class="mb-3">
 				<strong class="text-info">Trace Tree:</strong>
 				<div class="mt-2 p-3 bg-darker rounded">
-					<SpanTree spans={allSpans} currentSpanId={span.span_id} />
+					<SpanTree spans={allSpans} events={allEvents} currentSpanId={span.span_id} />
 				</div>
 			</div>
 		{:else}
@@ -109,10 +118,7 @@
 		</div>
 
 		{#if span.events && span.events.length > 0}
-			<div class="mt-3">
-				<strong class="text-info">Events:</strong>
-				<pre class="bg-darker p-2 rounded mt-2 small">{JSON.stringify(span.events, null, 2)}</pre>
-			</div>
+			<SpanEventList events={span.events} spanLevel={span.level} />
 		{/if}
 
 		{#if span.attributes && Object.keys(span.attributes).length > 0}

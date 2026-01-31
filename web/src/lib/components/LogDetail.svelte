@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { LogRecord } from '$lib/api';
 
-	export let log: LogRecord;
+	let { log }: { log: LogRecord } = $props();
 </script>
 
 <div class="card mt-2 mb-3">

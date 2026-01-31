@@ -46,7 +46,7 @@ impl Database {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp INTEGER NOT NULL,
                 service_name TEXT,
-                level TEXT,
+                level INTEGER,
                 target TEXT,
                 message TEXT,
                 span_id TEXT,
@@ -86,14 +86,14 @@ impl Database {
             "CREATE TABLE IF NOT EXISTS spans (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 trace_id TEXT NOT NULL,
-                span_id TEXT NOT NULL,
+                span_id TEXT NOT NULL UNIQUE,
                 parent_span_id TEXT,
                 service_name TEXT,
                 name TEXT NOT NULL,
                 kind TEXT,
                 start_time INTEGER NOT NULL,
                 end_time INTEGER,
-                level TEXT,
+                level INTEGER,
                 target TEXT,
                 attributes TEXT,
                 events TEXT,
@@ -128,6 +128,48 @@ impl Database {
             [],
         )?;
 
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS span_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                span_id TEXT NOT NULL,
+                trace_id TEXT NOT NULL,
+                service_name TEXT,
+                name TEXT NOT NULL,
+                timestamp INTEGER NOT NULL,
+                level INTEGER,
+                target TEXT,
+                attributes TEXT,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY (span_id) REFERENCES spans(span_id) ON DELETE CASCADE
+            )",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_span_events_span_id ON span_events(span_id)",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_span_events_trace_id ON span_events(trace_id)",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_span_events_timestamp ON span_events(timestamp)",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_span_events_service_name ON span_events(service_name)",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_span_events_level ON span_events(level)",
+            [],
+        )?;
+
         Ok(())
     }
 
@@ -140,7 +182,7 @@ impl Database {
                 params![
                     log.timestamp,
                     log.service_name,
-                    log.level.map(|l| l.to_string()),
+                    log.level.map(|l| l.to_int()),
                     log.target,
                     log.message,
                     log.span_id,
@@ -158,7 +200,7 @@ impl Database {
         let conn = Arc::clone(&self.conn);
         conn.call(move |conn| {
             conn.execute(
-                "INSERT INTO spans (trace_id, span_id, parent_span_id, service_name, name, kind, start_time, end_time, level, target, attributes, events, status, created_at)
+                "INSERT OR REPLACE INTO spans (trace_id, span_id, parent_span_id, service_name, name, kind, start_time, end_time, level, target, attributes, events, status, created_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                 params![
                     span.trace_id,
@@ -169,11 +211,37 @@ impl Database {
                     span.kind,
                     span.start_time,
                     span.end_time,
-                    span.level.map(|l| l.to_string()),
+                    span.level.map(|l| l.to_int()),
                     span.target,
                     span.attributes,
                     span.events,
                     span.status,
+                    Utc::now().timestamp_nanos_opt().unwrap_or(0),
+                ],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn insert_span_event(
+        &self,
+        event: SpanEventRecord,
+    ) -> Result<(), tokio_rusqlite::Error> {
+        let conn = Arc::clone(&self.conn);
+        conn.call(move |conn| {
+            conn.execute(
+                "INSERT INTO span_events (span_id, trace_id, service_name, name, timestamp, level, target, attributes, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    event.span_id,
+                    event.trace_id,
+                    event.service_name,
+                    event.name,
+                    event.timestamp,
+                    event.level.map(|l| l.to_int()),
+                    event.target,
+                    event.attributes,
                     Utc::now().timestamp_nanos_opt().unwrap_or(0),
                 ],
             )?;
@@ -197,8 +265,9 @@ impl Database {
             }
 
             if let Some(level) = &filter.level {
-                query.push_str(" AND level = ?");
-                params.push(Box::new(level.to_string()));
+                // Filter for minimum level (e.g., if level is WARN, show WARN, ERROR, and FATAL)
+                query.push_str(" AND level >= ?");
+                params.push(Box::new(level.to_int()));
             }
 
             if let Some(target) = &filter.target {
@@ -224,11 +293,11 @@ impl Database {
             let mut stmt = conn.prepare(&query)?;
             let logs = stmt
                 .query_map(param_refs.as_slice(), |row| {
-                    let level_str: Option<String> = row.get(3)?;
+                    let level_int: Option<i32> = row.get(3)?;
                     Ok(LogRecord {
                         timestamp: row.get(1)?,
                         service_name: row.get(2)?,
-                        level: level_str.and_then(|s| s.parse().ok()),
+                        level: level_int.and_then(Level::from_int),
                         target: row.get(4)?,
                         message: row.get(5)?,
                         span_id: row.get(6)?,
@@ -258,8 +327,9 @@ impl Database {
             }
 
             if let Some(level) = &filter.level {
-                query.push_str(" AND level = ?");
-                params.push(Box::new(level.to_string()));
+                // Filter for minimum level (e.g., if level is WARN, show WARN, ERROR, and FATAL)
+                query.push_str(" AND level >= ?");
+                params.push(Box::new(level.to_int()));
             }
 
             if let Some(target) = &filter.target {
@@ -285,7 +355,7 @@ impl Database {
             let mut stmt = conn.prepare(&query)?;
             let spans = stmt
                 .query_map(param_refs.as_slice(), |row| {
-                    let level_str: Option<String> = row.get(8)?;
+                    let level_int: Option<i32> = row.get(8)?;
                     Ok(SpanRecord {
                         trace_id: row.get(0)?,
                         span_id: row.get(1)?,
@@ -295,7 +365,7 @@ impl Database {
                         kind: row.get(5)?,
                         start_time: row.get(6)?,
                         end_time: row.get(7)?,
-                        level: level_str.and_then(|s| s.parse().ok()),
+                        level: level_int.and_then(Level::from_int),
                         target: row.get(9)?,
                         attributes: row.get(10)?,
                         events: row.get(11)?,
@@ -340,7 +410,7 @@ impl Database {
                 let mut stmt = conn.prepare(&query)?;
                 let children = stmt
                     .query_map(params.as_slice(), |row| {
-                        let level_str: Option<String> = row.get(8)?;
+                        let level_int: Option<i32> = row.get(8)?;
                         Ok(SpanRecord {
                             trace_id: row.get(0)?,
                             span_id: row.get(1)?,
@@ -350,7 +420,7 @@ impl Database {
                             kind: row.get(5)?,
                             start_time: row.get(6)?,
                             end_time: row.get(7)?,
-                            level: level_str.and_then(|s| s.parse().ok()),
+                            level: level_int.and_then(Level::from_int),
                             target: row.get(9)?,
                             attributes: row.get(10)?,
                             events: row.get(11)?,
@@ -367,6 +437,68 @@ impl Database {
         Ok(result)
     }
 
+    pub async fn query_span_events(
+        &self,
+        filter: SpanEventFilter,
+    ) -> Result<Vec<SpanEventRecord>, tokio_rusqlite::Error> {
+        let conn = Arc::clone(&self.conn);
+        conn.call(move |conn| {
+            let mut query = String::from("SELECT span_id, trace_id, service_name, name, timestamp, level, target, attributes FROM span_events WHERE 1=1");
+            let mut params: Vec<Box<dyn tokio_rusqlite::rusqlite::ToSql>> = Vec::new();
+
+            if let Some(service_name) = &filter.service_name {
+                query.push_str(" AND service_name = ?");
+                params.push(Box::new(service_name.clone()));
+            }
+
+            if let Some(level) = &filter.level {
+                // Filter for minimum level (e.g., if level is WARN, show WARN, ERROR, and FATAL)
+                query.push_str(" AND level >= ?");
+                params.push(Box::new(level.to_int()));
+            }
+
+            if let Some(target) = &filter.target {
+                query.push_str(" AND target = ?");
+                params.push(Box::new(target.clone()));
+            }
+
+            if let Some(span_id) = &filter.span_id {
+                query.push_str(" AND span_id = ?");
+                params.push(Box::new(span_id.clone()));
+            }
+
+            if let Some(trace_id) = &filter.trace_id {
+                query.push_str(" AND trace_id = ?");
+                params.push(Box::new(trace_id.clone()));
+            }
+
+            query.push_str(" ORDER BY timestamp DESC LIMIT ?");
+            params.push(Box::new(filter.limit.unwrap_or(1000)));
+
+            let param_refs: Vec<&dyn tokio_rusqlite::rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+
+            let mut stmt = conn.prepare(&query)?;
+            let events = stmt
+                .query_map(param_refs.as_slice(), |row| {
+                    let level_int: Option<i32> = row.get(5)?;
+                    Ok(SpanEventRecord {
+                        span_id: row.get(0)?,
+                        trace_id: row.get(1)?,
+                        service_name: row.get(2)?,
+                        name: row.get(3)?,
+                        timestamp: row.get(4)?,
+                        level: level_int.and_then(Level::from_int),
+                        target: row.get(6)?,
+                        attributes: row.get(7)?,
+                    })
+                })?
+                .collect::<SqliteResult<Vec<_>>>()?;
+
+            Ok(events)
+        })
+        .await
+    }
+
     pub async fn cleanup_old_records(
         &self,
         max_age_seconds: i64,
@@ -378,6 +510,10 @@ impl Database {
 
             conn.execute("DELETE FROM logs WHERE created_at < ?1", params![cutoff])?;
             conn.execute("DELETE FROM spans WHERE created_at < ?1", params![cutoff])?;
+            conn.execute(
+                "DELETE FROM span_events WHERE created_at < ?1",
+                params![cutoff],
+            )?;
 
             Ok(())
         })
@@ -487,6 +623,18 @@ pub struct SpanRecord {
     pub status: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct SpanEventRecord {
+    pub span_id: String,
+    pub trace_id: String,
+    pub service_name: Option<String>,
+    pub name: String,
+    pub timestamp: i64,
+    pub level: Option<Level>,
+    pub target: Option<String>,
+    pub attributes: Option<String>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct LogFilter {
     pub service_name: Option<String>,
@@ -499,6 +647,16 @@ pub struct LogFilter {
 
 #[derive(Debug, Clone, Default)]
 pub struct SpanFilter {
+    pub service_name: Option<String>,
+    pub level: Option<Level>,
+    pub target: Option<String>,
+    pub span_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SpanEventFilter {
     pub service_name: Option<String>,
     pub level: Option<Level>,
     pub target: Option<String>,
@@ -707,5 +865,59 @@ mod tests {
         assert!(span_names.contains(&"child_span_1"));
         assert!(span_names.contains(&"child_span_2"));
         assert!(span_names.contains(&"grandchild_span"));
+    }
+
+    #[tokio::test]
+    async fn test_duplicate_span_handling() {
+        let db = Database::in_memory().await.unwrap();
+
+        let span1 = SpanRecord {
+            trace_id: "trace-duplicate".to_string(),
+            span_id: "duplicate-span".to_string(),
+            parent_span_id: None,
+            service_name: Some("test-service".to_string()),
+            name: "first_insert".to_string(),
+            kind: Some("internal".to_string()),
+            start_time: 1000,
+            end_time: None,
+            level: Some(Level::Info),
+            target: Some("test::module".to_string()),
+            attributes: Some("{}".to_string()),
+            events: Some("[]".to_string()),
+            status: Some("Ok".to_string()),
+        };
+
+        let span2 = SpanRecord {
+            trace_id: "trace-duplicate".to_string(),
+            span_id: "duplicate-span".to_string(), // Same span_id
+            parent_span_id: None,
+            service_name: Some("test-service".to_string()),
+            name: "second_insert".to_string(), // Different name
+            kind: Some("internal".to_string()),
+            start_time: 2000, // Different timestamp
+            end_time: None,
+            level: Some(Level::Warn), // Different level
+            target: Some("test::module".to_string()),
+            attributes: Some("{}".to_string()),
+            events: Some("[]".to_string()),
+            status: Some("Ok".to_string()),
+        };
+
+        // Insert the same span_id twice
+        db.insert_span(span1).await.unwrap();
+        db.insert_span(span2).await.unwrap();
+
+        let filter = SpanFilter {
+            span_id: Some("duplicate-span".to_string()),
+            ..Default::default()
+        };
+
+        let spans = db.query_spans(filter).await.unwrap();
+
+        // Should only have one span (the second one replaces the first)
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].name, "second_insert");
+        assert_eq!(spans[0].start_time, 2000);
+        assert_eq!(spans[0].level, Some(Level::Warn));
     }
 }

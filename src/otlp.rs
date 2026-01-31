@@ -1,4 +1,4 @@
-use crate::db::{LogRecord, SpanRecord};
+use crate::db::{LogRecord, SpanEventRecord, SpanRecord};
 use crate::level::Level;
 use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
 use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
@@ -72,8 +72,11 @@ pub fn convert_otlp_logs(request: ExportLogsServiceRequest) -> Vec<LogRecord> {
     logs
 }
 
-pub fn convert_otlp_traces(request: ExportTraceServiceRequest) -> Vec<SpanRecord> {
+pub fn convert_otlp_traces(
+    request: ExportTraceServiceRequest,
+) -> (Vec<SpanRecord>, Vec<SpanEventRecord>) {
     let mut spans = Vec::new();
+    let mut span_events = Vec::new();
 
     for resource_span in request.resource_spans {
         let service_name = resource_span.resource.as_ref().and_then(|r| {
@@ -123,7 +126,7 @@ pub fn convert_otlp_traces(request: ExportTraceServiceRequest) -> Vec<SpanRecord
                         // Keep level in attributes too
                     }
 
-                    if attr.key == "code.target" || attr.key == "target" {
+                    if attr.key == "code.namespace" || attr.key == "target" {
                         target = extract_string_value(attr);
                         // Keep target in attributes too
                     }
@@ -145,11 +148,54 @@ pub fn convert_otlp_traces(request: ExportTraceServiceRequest) -> Vec<SpanRecord
                     None
                 };
 
+                // Extract events as first-class records
                 let events = if !span.events.is_empty() {
                     let events_json: Vec<serde_json::Value> = span
                         .events
                         .iter()
                         .map(|e| {
+                            // Extract event attributes and create SpanEventRecord
+                            let mut event_level = None;
+                            let mut event_target = None;
+                            let mut event_attrs = serde_json::Map::new();
+
+                            for attr in &e.attributes {
+                                // Check for level in event attributes
+                                if attr.key == "level"
+                                    || attr.key == "otel.level"
+                                    || attr.key == "log.level"
+                                    || attr.key == "severity"
+                                {
+                                    event_level =
+                                        extract_string_value(attr).and_then(|s| s.parse().ok());
+                                }
+
+                                if attr.key == "code.namespace" || attr.key == "target" {
+                                    event_target = extract_string_value(attr);
+                                }
+
+                                if let Some(value) = attribute_to_json_value(attr) {
+                                    event_attrs.insert(attr.key.clone(), value);
+                                }
+                            }
+
+                            // Create SpanEventRecord for this event
+                            span_events.push(SpanEventRecord {
+                                span_id: span_id_hex.clone(),
+                                trace_id: trace_id_hex.clone(),
+                                service_name: service_name.clone(),
+                                name: e.name.clone(),
+                                timestamp: e.time_unix_nano as i64,
+                                level: event_level.or(level),
+                                target: event_target.or_else(|| target.clone()),
+                                attributes: if !event_attrs.is_empty() {
+                                    Some(serde_json::to_string(&event_attrs).unwrap_or_default())
+                                } else {
+                                    None
+                                },
+                            });
+
+                            // Also store in JSON for backward compatibility
                             let mut event_map = serde_json::Map::new();
                             event_map.insert(
                                 "name".to_string(),
@@ -160,16 +206,10 @@ pub fn convert_otlp_traces(request: ExportTraceServiceRequest) -> Vec<SpanRecord
                                 serde_json::Value::Number(e.time_unix_nano.into()),
                             );
 
-                            if !e.attributes.is_empty() {
-                                let mut attrs = serde_json::Map::new();
-                                for attr in &e.attributes {
-                                    if let Some(value) = attribute_to_json_value(attr) {
-                                        attrs.insert(attr.key.clone(), value);
-                                    }
-                                }
+                            if !event_attrs.is_empty() {
                                 event_map.insert(
                                     "attributes".to_string(),
-                                    serde_json::Value::Object(attrs),
+                                    serde_json::Value::Object(event_attrs),
                                 );
                             }
 
@@ -204,7 +244,7 @@ pub fn convert_otlp_traces(request: ExportTraceServiceRequest) -> Vec<SpanRecord
         }
     }
 
-    spans
+    (spans, span_events)
 }
 
 fn severity_to_level(severity: i32) -> Option<Level> {
@@ -376,11 +416,12 @@ mod tests {
             }],
         };
 
-        let spans = convert_otlp_traces(request);
+        let (spans, events) = convert_otlp_traces(request);
         assert_eq!(spans.len(), 1);
         assert_eq!(spans[0].service_name, Some("test-service".to_string()));
         assert_eq!(spans[0].name, "test_span");
         assert_eq!(spans[0].target, Some("test::module".to_string()));
+        assert_eq!(events.len(), 0); // No events in this test span
     }
 
     #[test]

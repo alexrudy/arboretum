@@ -1,14 +1,20 @@
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
+	import type { Level } from '$lib/api';
 
-	export let serviceName = '';
-	export let target = '';
-	export let level = '';
-
-	const dispatch = createEventDispatcher();
+	let {
+		serviceName = $bindable(''),
+		target = $bindable(''),
+		level = $bindable<Level | null>(null),
+		onsearch
+	}: {
+		serviceName?: string;
+		target?: string;
+		level?: Level | null;
+		onsearch?: (detail: { serviceName: string; target: string; level: Level | null }) => void;
+	} = $props();
 
 	function handleSearch() {
-		dispatch('search', { serviceName, target, level });
+		onsearch?.({ serviceName, target, level });
 	}
 
 	function handleKeyPress(event: KeyboardEvent) {
@@ -35,7 +41,7 @@
 					class="form-control"
 					placeholder="Service name"
 					bind:value={serviceName}
-					on:keypress={handleKeyPress}
+					onkeypress={handleKeyPress}
 				/>
 			</div>
 
@@ -48,12 +54,12 @@
 					class="form-control"
 					placeholder="Target (e.g., module::path)"
 					bind:value={target}
-					on:keypress={handleKeyPress}
+					onkeypress={handleKeyPress}
 				/>
 			</div>
 
 			<select class="form-select" style="max-width: 150px;" bind:value={level}>
-				<option value="">All Levels</option>
+				<option value={null}>All Levels</option>
 				<option value="TRACE">TRACE</option>
 				<option value="DEBUG">DEBUG</option>
 				<option value="INFO">INFO</option>
@@ -62,7 +68,7 @@
 				<option value="FATAL">FATAL</option>
 			</select>
 
-			<button class="btn btn-primary" on:click={handleSearch}>
+			<button class="btn btn-primary" onclick={handleSearch}>
 				<i class="bi bi-search"></i>
 				Search
 			</button>

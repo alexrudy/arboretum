@@ -1,4 +1,6 @@
-use crate::db::{Database, LogFilter, LogRecord, SpanFilter, SpanRecord};
+use crate::db::{
+    Database, LogFilter, LogRecord, SpanEventFilter, SpanEventRecord, SpanFilter, SpanRecord,
+};
 use crate::level::Level;
 use crate::otlp::{convert_otlp_logs, convert_otlp_traces};
 use axum::{
@@ -50,12 +52,20 @@ pub async fn export_traces(
     let request: ExportTraceServiceRequest = prost::Message::decode(body)
         .map_err(|e| AppError::BadRequest(format!("Failed to decode protobuf: {}", e)))?;
 
-    let spans = convert_otlp_traces(request);
+    let (spans, events) = convert_otlp_traces(request);
 
     for span in spans {
         state
             .db
             .insert_span(span)
+            .await
+            .map_err(|e| AppError::Internal(format!("Database error: {}", e)))?;
+    }
+
+    for event in events {
+        state
+            .db
+            .insert_span_event(event)
             .await
             .map_err(|e| AppError::Internal(format!("Database error: {}", e)))?;
     }
@@ -204,7 +214,83 @@ pub async fn query_spans(
         .await
         .map_err(|e| AppError::Internal(format!("Database error: {}", e)))?;
 
-    let response: Vec<SpanResponse> = spans.into_iter().map(SpanResponse::from).collect();
+    // Deduplicate spans by span_id (get_spans_with_children can return duplicates)
+    let mut seen_span_ids = std::collections::HashSet::new();
+    let unique_spans: Vec<_> = spans
+        .into_iter()
+        .filter(|span| seen_span_ids.insert(span.span_id.clone()))
+        .collect();
+
+    let response: Vec<SpanResponse> = unique_spans.into_iter().map(SpanResponse::from).collect();
+
+    Ok(Json(response))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SpanEventQueryParams {
+    pub service_name: Option<String>,
+    pub level: Option<String>,
+    pub target: Option<String>,
+    pub span_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SpanEventResponse {
+    pub span_id: String,
+    pub trace_id: String,
+    pub service_name: Option<String>,
+    pub name: String,
+    pub timestamp: i64,
+    pub level: Option<Level>,
+    pub target: Option<String>,
+    pub attributes: Option<serde_json::Value>,
+}
+
+impl From<SpanEventRecord> for SpanEventResponse {
+    fn from(event: SpanEventRecord) -> Self {
+        Self {
+            span_id: event.span_id,
+            trace_id: event.trace_id,
+            service_name: event.service_name,
+            name: event.name,
+            timestamp: event.timestamp,
+            level: event.level,
+            target: event.target,
+            attributes: event.attributes.and_then(|a| serde_json::from_str(&a).ok()),
+        }
+    }
+}
+
+pub async fn query_span_events(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<SpanEventQueryParams>,
+) -> Result<Json<Vec<SpanEventResponse>>, AppError> {
+    let level = params
+        .level
+        .as_ref()
+        .map(|s| s.parse::<Level>())
+        .transpose()
+        .map_err(|e| AppError::BadRequest(format!("Invalid level: {}", e)))?;
+
+    let filter = SpanEventFilter {
+        service_name: params.service_name,
+        level,
+        target: params.target,
+        span_id: params.span_id,
+        trace_id: params.trace_id,
+        limit: params.limit,
+    };
+
+    let events = state
+        .db
+        .query_span_events(filter)
+        .await
+        .map_err(|e| AppError::Internal(format!("Database error: {}", e)))?;
+
+    let response: Vec<SpanEventResponse> =
+        events.into_iter().map(SpanEventResponse::from).collect();
 
     Ok(Json(response))
 }
@@ -227,9 +313,10 @@ pub struct RecordQueryParams {
     pub level: Option<String>,
     pub target: Option<String>,
     pub limit: Option<i64>,
+    pub offset: Option<i64>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum RecordResponse {
     Log {
@@ -257,6 +344,16 @@ pub enum RecordResponse {
         attributes: Option<serde_json::Value>,
         events: Option<serde_json::Value>,
         status: Option<String>,
+    },
+    Event {
+        timestamp: i64,
+        span_id: String,
+        trace_id: String,
+        service_name: Option<String>,
+        name: String,
+        level: Option<Level>,
+        target: Option<String>,
+        attributes: Option<serde_json::Value>,
     },
 }
 
@@ -289,9 +386,9 @@ pub async fn query_records(
 
     // Query spans
     let span_filter = SpanFilter {
-        service_name: params.service_name,
+        service_name: params.service_name.clone(),
         level,
-        target: params.target,
+        target: params.target.clone(),
         span_id: None,
         trace_id: None,
         limit: params.limit,
@@ -300,6 +397,29 @@ pub async fn query_records(
     let spans = state
         .db
         .query_spans(span_filter)
+        .await
+        .map_err(|e| AppError::Internal(format!("Database error: {}", e)))?;
+
+    // Deduplicate spans by span_id (get_spans_with_children can return duplicates)
+    let mut seen_span_ids = std::collections::HashSet::new();
+    let unique_spans: Vec<_> = spans
+        .into_iter()
+        .filter(|span| seen_span_ids.insert(span.span_id.clone()))
+        .collect();
+
+    // Query span events
+    let event_filter = SpanEventFilter {
+        service_name: params.service_name,
+        level,
+        target: params.target,
+        span_id: None,
+        trace_id: None,
+        limit: params.limit,
+    };
+
+    let events = state
+        .db
+        .query_span_events(event_filter)
         .await
         .map_err(|e| AppError::Internal(format!("Database error: {}", e)))?;
 
@@ -319,7 +439,7 @@ pub async fn query_records(
         });
     }
 
-    for span in spans {
+    for span in unique_spans {
         records.push(RecordResponse::Span {
             timestamp: span.start_time,
             trace_id: span.trace_id,
@@ -338,25 +458,48 @@ pub async fn query_records(
         });
     }
 
-    // Sort by timestamp descending
+    for event in events {
+        records.push(RecordResponse::Event {
+            timestamp: event.timestamp,
+            span_id: event.span_id,
+            trace_id: event.trace_id,
+            service_name: event.service_name,
+            name: event.name,
+            level: event.level,
+            target: event.target,
+            attributes: event.attributes.and_then(|a| serde_json::from_str(&a).ok()),
+        });
+    }
+
+    // Sort by timestamp ascending (oldest first, newest last)
     records.sort_by(|a, b| {
         let ts_a = match a {
             RecordResponse::Log { timestamp, .. } => *timestamp,
             RecordResponse::Span { timestamp, .. } => *timestamp,
+            RecordResponse::Event { timestamp, .. } => *timestamp,
         };
         let ts_b = match b {
             RecordResponse::Log { timestamp, .. } => *timestamp,
             RecordResponse::Span { timestamp, .. } => *timestamp,
+            RecordResponse::Event { timestamp, .. } => *timestamp,
         };
-        ts_b.cmp(&ts_a)
+        ts_a.cmp(&ts_b)
     });
 
-    // Apply limit if specified
-    if let Some(limit) = params.limit {
-        records.truncate(limit as usize);
-    }
+    // Apply offset and limit for pagination
+    let offset = params.offset.unwrap_or(0) as usize;
+    let limit = params.limit.unwrap_or(1000) as usize;
 
-    Ok(Json(records))
+    let start = offset;
+    let end = std::cmp::min(start + limit, records.len());
+
+    let paginated_records = if start < records.len() {
+        records[start..end].to_vec()
+    } else {
+        vec![]
+    };
+
+    Ok(Json(paginated_records))
 }
 
 #[derive(Debug)]

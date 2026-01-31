@@ -1,25 +1,21 @@
 <script lang="ts">
 	import type { LogOrSpan } from '$lib/api';
-	import { formatTimestamp, getLevelColor } from '$lib/utils';
-	import { createEventDispatcher } from 'svelte';
+	import { formatTimestamp, formatTimestampFull, getLevelColor } from '$lib/utils';
 
-	export let record: LogOrSpan;
-	export let expanded = false;
+	let {
+		record,
+		expanded = $bindable(false),
+		onclick
+	}: { record: LogOrSpan; expanded?: boolean; onclick?: () => void } = $props();
 
-	const dispatch = createEventDispatcher();
-
-	function toggleExpanded() {
-		expanded = !expanded;
-		dispatch('toggle', { record, expanded });
-	}
-
-	$: levelColor = getLevelColor(record.level);
-	$: timestamp = formatTimestamp(record.timestamp);
+	let levelColor = $derived(getLevelColor(record.level));
+	let timestamp = $derived(formatTimestamp(record.timestamp));
+	let fullTimestamp = $derived(formatTimestampFull(record.timestamp));
 </script>
 
-<div class="list-group-item list-group-item-action" on:click={toggleExpanded}>
+<div class="list-group-item list-group-item-action" {onclick}>
 	<div class="d-flex align-items-center gap-3">
-		<div class="text-muted small" style="min-width: 180px;">
+		<div class="text-muted small" style="min-width: 230px;" title={fullTimestamp}>
 			<i class="bi bi-clock"></i>
 			{timestamp}
 		</div>
@@ -39,7 +35,7 @@
 				{record.message || '(no message)'}
 			</div>
 			<i class="bi bi-file-text text-info"></i>
-		{:else}
+		{:else if record.type === 'span'}
 			<span class="badge bg-{levelColor}" style="min-width: 60px;">
 				{record.level || 'NONE'}
 			</span>
@@ -55,6 +51,22 @@
 				<strong>{record.name}</strong>
 			</div>
 			<i class="bi bi-box text-info"></i>
+		{:else if record.type === 'event'}
+			<span class="badge bg-{levelColor}" style="min-width: 60px;">
+				{record.level || 'NONE'}
+			</span>
+			<div
+				class="text-muted small"
+				style="min-width: 200px; overflow: hidden; text-overflow: ellipsis;"
+			>
+				<i class="bi bi-code-slash"></i>
+				{record.target || 'unknown'}
+			</div>
+			<div class="flex-grow-1">
+				<i class="bi bi-lightning-fill me-2" style="color: var(--brand-cyan);"></i>
+				<strong>{record.name}</strong>
+			</div>
+			<i class="bi bi-activity text-info"></i>
 		{/if}
 
 		<i class="bi bi-chevron-{expanded ? 'up' : 'down'}"></i>

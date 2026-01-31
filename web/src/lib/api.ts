@@ -14,6 +14,12 @@ export interface LogRecord {
 	attributes: Record<string, any> | null;
 }
 
+export interface SpanEvent {
+	name: string;
+	time: number;
+	attributes?: Record<string, any>;
+}
+
 export interface SpanRecord {
 	type: 'span';
 	timestamp: number;
@@ -28,11 +34,23 @@ export interface SpanRecord {
 	level: Level | null;
 	target: string | null;
 	attributes: Record<string, any> | null;
-	events: any[] | null;
+	events: SpanEvent[] | null;
 	status: string | null;
 }
 
-export type LogOrSpan = LogRecord | SpanRecord;
+export interface EventRecord {
+	type: 'event';
+	timestamp: number;
+	span_id: string;
+	trace_id: string;
+	service_name: string | null;
+	name: string;
+	level: Level | null;
+	target: string | null;
+	attributes: Record<string, any> | null;
+}
+
+export type LogOrSpan = LogRecord | SpanRecord | EventRecord;
 
 export interface DatabaseStats {
 	total_logs: number;
@@ -56,12 +74,14 @@ export class ArboretumClient {
 		target?: string;
 		level?: string;
 		limit?: number;
+		offset?: number;
 	}): Promise<LogOrSpan[]> {
 		const queryParams = new URLSearchParams();
 		if (params.service_name) queryParams.append('service_name', params.service_name);
 		if (params.target) queryParams.append('target', params.target);
 		if (params.level) queryParams.append('level', params.level);
 		if (params.limit) queryParams.append('limit', params.limit.toString());
+		if (params.offset !== undefined) queryParams.append('offset', params.offset.toString());
 
 		const url = `${this.baseUrl}/api/v1/records?${queryParams}`;
 		const response = await fetch(url);
@@ -87,6 +107,30 @@ export class ArboretumClient {
 		const response = await fetch(url);
 		if (!response.ok) {
 			throw new Error(`Failed to fetch spans: ${response.statusText}`);
+		}
+		return response.json();
+	}
+
+	async getEvents(params: {
+		service_name?: string;
+		target?: string;
+		trace_id?: string;
+		span_id?: string;
+		level?: string;
+		limit?: number;
+	}): Promise<EventRecord[]> {
+		const queryParams = new URLSearchParams();
+		if (params.service_name) queryParams.append('service_name', params.service_name);
+		if (params.target) queryParams.append('target', params.target);
+		if (params.trace_id) queryParams.append('trace_id', params.trace_id);
+		if (params.span_id) queryParams.append('span_id', params.span_id);
+		if (params.level) queryParams.append('level', params.level);
+		if (params.limit) queryParams.append('limit', params.limit.toString());
+
+		const url = `${this.baseUrl}/api/v1/events?${queryParams}`;
+		const response = await fetch(url);
+		if (!response.ok) {
+			throw new Error(`Failed to fetch events: ${response.statusText}`);
 		}
 		return response.json();
 	}
