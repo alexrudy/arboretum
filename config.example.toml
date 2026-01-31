@@ -1,0 +1,22 @@
+# Arboretum Configuration Example
+# This file shows all available configuration options with their default values
+
+# Address to listen on for incoming OTLP requests
+listen_addr = "0.0.0.0:4317"
+
+# Path to the SQLite database file
+db_path = "arboretum.db"
+
+# Maximum age of records in seconds (default: 2 hours)
+max_retention_seconds = 7200
+
+# Interval between cleanup runs in seconds (default: 5 minutes)
+cleanup_interval_seconds = 300
+
+# Maximum number of log records to keep (optional)
+# Oldest records will be deleted when this limit is exceeded
+# max_logs = 100000
+
+# Maximum number of span records to keep (optional)
+# Oldest spans will be deleted when this limit is exceeded
+# max_spans = 50000
