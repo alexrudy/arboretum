@@ -3,6 +3,10 @@ name = "arboretum"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+tui = ["dep:ratatui", "dep:crossterm", "dep:reqwest"]
+
 [dependencies]
 axum = "0.8.8"
 tokio = { version = "1.49.0", features = ["full"] }
@@ -22,7 +26,11 @@ opentelemetry-proto = { version = "0.27", features = ["gen-tonic"] }
 prost = "0.13"
 tonic = "0.12"
 hex = "0.4"
+ratatui = { version = "0.29", optional = true }
+crossterm = { version = "0.28", optional = true }
+reqwest = { version = "0.12", features = ["json"], optional = true }
 
 [dev-dependencies]
 reqwest = { version = "0.12", features = ["json"] }
 tokio = { version = "1.49.0", features = ["full"] }
+indoc = "2.0"

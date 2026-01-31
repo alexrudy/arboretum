@@ -19,6 +19,12 @@ OpenTelemetry log and trace caching server for short-term analysis.
 cargo build --release
 ```
 
+For TUI support:
+
+```bash
+cargo build --release --features tui
+```
+
 ### Running with Configuration File
 
 Create a `config.toml` file (see `config.example.toml`):
@@ -45,6 +51,42 @@ Then run:
 ```
 
 This uses default values and environment variable overrides.
+
+### Using the TUI
+
+When built with the `tui` feature, you can launch an interactive terminal interface to view logs, spans, and events in real-time from a running Arboretum server:
+
+```bash
+# Connect to the default server (http://localhost:3333)
+./target/release/arboretum tui
+
+# Connect to a specific server
+./target/release/arboretum tui --url http://localhost:8080
+```
+
+The TUI displays:
+- Real-time streaming of logs, spans, and span events from the server API
+- Color-coded log levels
+- One record per line with timestamps, levels, targets, and messages
+- Automatic scrolling to follow the latest records
+- Interactive filtering by target and level
+
+**TUI Controls:**
+- `f` - Edit filter (format: `target=level`, e.g., `my_module=warn,other=info`)
+- `q` - Quit
+- Enter - Apply filter
+- Esc - Cancel filter editing
+
+**Filter Examples:**
+- `my_module=info` - Show INFO and above for my_module
+- `=warn` - Set default level to WARN
+- `my_module=info,other=debug` - Multiple filters
+
+**Usage Workflow:**
+1. Start the Arboretum server: `./target/release/arboretum`
+2. In another terminal, launch the TUI: `./target/release/arboretum tui`
+3. Configure your application to send OTLP data to the server
+4. Watch logs stream in real-time in the TUI
 
 ## Configuration
 

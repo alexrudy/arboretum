@@ -83,7 +83,7 @@ pub struct LogQueryParams {
     pub limit: Option<i64>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct LogResponse {
     pub timestamp: i64,
     pub service_name: Option<String>,
@@ -113,7 +113,7 @@ impl From<LogRecord> for LogResponse {
 pub async fn query_logs(
     State(state): State<Arc<AppState>>,
     Query(params): Query<LogQueryParams>,
-) -> Result<Json<Vec<LogResponse>>, AppError> {
+) -> Result<Json<Vec<RecordResponse>>, AppError> {
     let level = params
         .level
         .as_ref()
@@ -136,7 +136,14 @@ pub async fn query_logs(
         .await
         .map_err(|e| AppError::Internal(format!("Database error: {}", e)))?;
 
-    let response: Vec<LogResponse> = logs.into_iter().map(LogResponse::from).collect();
+    let mut response: Vec<RecordResponse> = logs
+        .into_iter()
+        .map(|log| LogResponse::from(log).into())
+        .collect();
+
+    // Sort and deduplicate
+    response.sort_by(|a, b| a.cmp(b));
+    deduplicate_records(&mut response);
 
     Ok(Json(response))
 }
@@ -151,8 +158,9 @@ pub struct SpanQueryParams {
     pub limit: Option<i64>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SpanResponse {
+    pub timestamp: i64,
     pub trace_id: String,
     pub span_id: String,
     pub parent_span_id: Option<String>,
@@ -171,6 +179,7 @@ pub struct SpanResponse {
 impl From<SpanRecord> for SpanResponse {
     fn from(span: SpanRecord) -> Self {
         Self {
+            timestamp: span.start_time,
             trace_id: span.trace_id,
             span_id: span.span_id,
             parent_span_id: span.parent_span_id,
@@ -191,7 +200,7 @@ impl From<SpanRecord> for SpanResponse {
 pub async fn query_spans(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SpanQueryParams>,
-) -> Result<Json<Vec<SpanResponse>>, AppError> {
+) -> Result<Json<Vec<RecordResponse>>, AppError> {
     let level = params
         .level
         .as_ref()
@@ -214,14 +223,14 @@ pub async fn query_spans(
         .await
         .map_err(|e| AppError::Internal(format!("Database error: {}", e)))?;
 
-    // Deduplicate spans by span_id (get_spans_with_children can return duplicates)
-    let mut seen_span_ids = std::collections::HashSet::new();
-    let unique_spans: Vec<_> = spans
+    let mut response: Vec<RecordResponse> = spans
         .into_iter()
-        .filter(|span| seen_span_ids.insert(span.span_id.clone()))
+        .map(|span| SpanResponse::from(span).into())
         .collect();
 
-    let response: Vec<SpanResponse> = unique_spans.into_iter().map(SpanResponse::from).collect();
+    // Sort and deduplicate (handles duplicates from get_spans_with_children)
+    response.sort_by(|a, b| a.cmp(b));
+    deduplicate_records(&mut response);
 
     Ok(Json(response))
 }
@@ -236,13 +245,13 @@ pub struct SpanEventQueryParams {
     pub limit: Option<i64>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SpanEventResponse {
+    pub timestamp: i64,
     pub span_id: String,
     pub trace_id: String,
     pub service_name: Option<String>,
     pub name: String,
-    pub timestamp: i64,
     pub level: Option<Level>,
     pub target: Option<String>,
     pub attributes: Option<serde_json::Value>,
@@ -251,11 +260,11 @@ pub struct SpanEventResponse {
 impl From<SpanEventRecord> for SpanEventResponse {
     fn from(event: SpanEventRecord) -> Self {
         Self {
+            timestamp: event.timestamp,
             span_id: event.span_id,
             trace_id: event.trace_id,
             service_name: event.service_name,
             name: event.name,
-            timestamp: event.timestamp,
             level: event.level,
             target: event.target,
             attributes: event.attributes.and_then(|a| serde_json::from_str(&a).ok()),
@@ -266,7 +275,7 @@ impl From<SpanEventRecord> for SpanEventResponse {
 pub async fn query_span_events(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SpanEventQueryParams>,
-) -> Result<Json<Vec<SpanEventResponse>>, AppError> {
+) -> Result<Json<Vec<RecordResponse>>, AppError> {
     let level = params
         .level
         .as_ref()
@@ -289,8 +298,14 @@ pub async fn query_span_events(
         .await
         .map_err(|e| AppError::Internal(format!("Database error: {}", e)))?;
 
-    let response: Vec<SpanEventResponse> =
-        events.into_iter().map(SpanEventResponse::from).collect();
+    let mut response: Vec<RecordResponse> = events
+        .into_iter()
+        .map(|event| SpanEventResponse::from(event).into())
+        .collect();
+
+    // Sort and deduplicate
+    response.sort_by(|a, b| a.cmp(b));
+    deduplicate_records(&mut response);
 
     Ok(Json(response))
 }
@@ -319,42 +334,97 @@ pub struct RecordQueryParams {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum RecordResponse {
+    Log(LogResponse),
+    Span(SpanResponse),
+    Event(SpanEventResponse),
+}
+
+impl From<LogResponse> for RecordResponse {
+    fn from(log: LogResponse) -> Self {
+        RecordResponse::Log(log)
+    }
+}
+
+impl From<SpanResponse> for RecordResponse {
+    fn from(span: SpanResponse) -> Self {
+        RecordResponse::Span(span)
+    }
+}
+
+impl From<SpanEventResponse> for RecordResponse {
+    fn from(event: SpanEventResponse) -> Self {
+        RecordResponse::Event(event)
+    }
+}
+
+/// A key for uniquely identifying and comparing records without allocations
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum RecordKey<'a> {
     Log {
         timestamp: i64,
-        service_name: Option<String>,
-        level: Option<Level>,
-        target: Option<String>,
-        message: Option<String>,
-        span_id: Option<String>,
-        trace_id: Option<String>,
-        attributes: Option<serde_json::Value>,
+        trace_id: Option<&'a str>,
     },
     Span {
-        timestamp: i64,
-        trace_id: String,
-        span_id: String,
-        parent_span_id: Option<String>,
-        service_name: Option<String>,
-        name: String,
-        kind: Option<String>,
-        start_time: i64,
-        end_time: Option<i64>,
-        level: Option<Level>,
-        target: Option<String>,
-        attributes: Option<serde_json::Value>,
-        events: Option<serde_json::Value>,
-        status: Option<String>,
+        span_id: &'a str,
     },
     Event {
+        span_id: &'a str,
         timestamp: i64,
-        span_id: String,
-        trace_id: String,
-        service_name: Option<String>,
-        name: String,
-        level: Option<Level>,
-        target: Option<String>,
-        attributes: Option<serde_json::Value>,
     },
+}
+
+impl RecordResponse {
+    pub fn timestamp(&self) -> i64 {
+        match self {
+            RecordResponse::Log(log) => log.timestamp,
+            RecordResponse::Span(span) => span.timestamp,
+            RecordResponse::Event(event) => event.timestamp,
+        }
+    }
+
+    /// Get a unique key for this record for deduplication and comparison
+    fn record_key(&self) -> RecordKey<'_> {
+        match self {
+            RecordResponse::Log(log) => RecordKey::Log {
+                timestamp: log.timestamp,
+                trace_id: log.trace_id.as_deref(),
+            },
+            RecordResponse::Span(span) => RecordKey::Span {
+                span_id: &span.span_id,
+            },
+            RecordResponse::Event(event) => RecordKey::Event {
+                span_id: &event.span_id,
+                timestamp: event.timestamp,
+            },
+        }
+    }
+
+    /// Compare two records for sorting (timestamp, then type, then unique key)
+    pub fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (self.timestamp(), self.record_key()).cmp(&(other.timestamp(), other.record_key()))
+    }
+}
+
+/// Deduplicate a sorted vector of records in-place
+/// This is efficient because duplicates are adjacent after sorting
+fn deduplicate_records(records: &mut Vec<RecordResponse>) {
+    if records.is_empty() {
+        return;
+    }
+
+    let mut write_idx = 0;
+
+    for read_idx in 1..records.len() {
+        // Compare keys without allocating strings
+        if records[write_idx].record_key() != records[read_idx].record_key() {
+            write_idx += 1;
+            if write_idx != read_idx {
+                records[write_idx] = records[read_idx].clone();
+            }
+        }
+    }
+
+    records.truncate(write_idx + 1);
 }
 
 pub async fn query_records(
@@ -400,13 +470,6 @@ pub async fn query_records(
         .await
         .map_err(|e| AppError::Internal(format!("Database error: {}", e)))?;
 
-    // Deduplicate spans by span_id (get_spans_with_children can return duplicates)
-    let mut seen_span_ids = std::collections::HashSet::new();
-    let unique_spans: Vec<_> = spans
-        .into_iter()
-        .filter(|span| seen_span_ids.insert(span.span_id.clone()))
-        .collect();
-
     // Query span events
     let event_filter = SpanEventFilter {
         service_name: params.service_name,
@@ -426,65 +489,23 @@ pub async fn query_records(
     // Convert to unified response format
     let mut records: Vec<RecordResponse> = Vec::new();
 
-    for log in logs {
-        records.push(RecordResponse::Log {
-            timestamp: log.timestamp,
-            service_name: log.service_name,
-            level: log.level,
-            target: log.target,
-            message: log.message,
-            span_id: log.span_id,
-            trace_id: log.trace_id,
-            attributes: log.attributes.and_then(|a| serde_json::from_str(&a).ok()),
-        });
-    }
+    records.extend(logs.into_iter().map(|log| LogResponse::from(log).into()));
+    records.extend(
+        spans
+            .into_iter()
+            .map(|span| SpanResponse::from(span).into()),
+    );
+    records.extend(
+        events
+            .into_iter()
+            .map(|event| SpanEventResponse::from(event).into()),
+    );
 
-    for span in unique_spans {
-        records.push(RecordResponse::Span {
-            timestamp: span.start_time,
-            trace_id: span.trace_id,
-            span_id: span.span_id,
-            parent_span_id: span.parent_span_id,
-            service_name: span.service_name,
-            name: span.name,
-            kind: span.kind,
-            start_time: span.start_time,
-            end_time: span.end_time,
-            level: span.level,
-            target: span.target,
-            attributes: span.attributes.and_then(|a| serde_json::from_str(&a).ok()),
-            events: span.events.and_then(|e| serde_json::from_str(&e).ok()),
-            status: span.status,
-        });
-    }
+    // Sort by timestamp, then type, then unique key for stable ordering
+    records.sort_by(|a, b| a.cmp(b));
 
-    for event in events {
-        records.push(RecordResponse::Event {
-            timestamp: event.timestamp,
-            span_id: event.span_id,
-            trace_id: event.trace_id,
-            service_name: event.service_name,
-            name: event.name,
-            level: event.level,
-            target: event.target,
-            attributes: event.attributes.and_then(|a| serde_json::from_str(&a).ok()),
-        });
-    }
-
-    // Sort by timestamp ascending (oldest first, newest last)
-    records.sort_by(|a, b| {
-        let ts_a = match a {
-            RecordResponse::Log { timestamp, .. } => *timestamp,
-            RecordResponse::Span { timestamp, .. } => *timestamp,
-            RecordResponse::Event { timestamp, .. } => *timestamp,
-        };
-        let ts_b = match b {
-            RecordResponse::Log { timestamp, .. } => *timestamp,
-            RecordResponse::Span { timestamp, .. } => *timestamp,
-            RecordResponse::Event { timestamp, .. } => *timestamp,
-        };
-        ts_a.cmp(&ts_b)
-    });
+    // Deduplicate records (efficient on sorted data)
+    deduplicate_records(&mut records);
 
     // Apply offset and limit for pagination
     let offset = params.offset.unwrap_or(0) as usize;
@@ -553,7 +574,12 @@ mod tests {
 
         let result = query_logs(State(state), Query(params)).await.unwrap();
         assert_eq!(result.0.len(), 1);
-        assert_eq!(result.0[0].service_name, Some("test-service".to_string()));
+        match &result.0[0] {
+            RecordResponse::Log(log) => {
+                assert_eq!(log.service_name, Some("test-service".to_string()));
+            }
+            _ => panic!("Expected Log response"),
+        }
     }
 
     #[tokio::test]
@@ -590,6 +616,139 @@ mod tests {
 
         let result = query_spans(State(state), Query(params)).await.unwrap();
         assert_eq!(result.0.len(), 1);
-        assert_eq!(result.0[0].name, "test_span");
+        match &result.0[0] {
+            RecordResponse::Span(span) => {
+                assert_eq!(span.name, "test_span");
+            }
+            _ => panic!("Expected Span response"),
+        }
+    }
+
+    #[test]
+    fn test_deduplicate_records() {
+        use crate::level::Level;
+
+        // Create some duplicate records
+        let log1 = LogResponse {
+            timestamp: 100,
+            service_name: Some("test".to_string()),
+            level: Some(Level::Info),
+            target: Some("test".to_string()),
+            message: Some("msg1".to_string()),
+            span_id: None,
+            trace_id: Some("trace1".to_string()),
+            attributes: None,
+        };
+
+        let log2 = log1.clone(); // Duplicate
+
+        let span1 = SpanResponse {
+            timestamp: 100,
+            trace_id: "trace1".to_string(),
+            span_id: "span1".to_string(),
+            parent_span_id: None,
+            service_name: Some("test".to_string()),
+            name: "test_span".to_string(),
+            kind: None,
+            start_time: 100,
+            end_time: Some(200),
+            level: Some(Level::Info),
+            target: None,
+            attributes: None,
+            events: None,
+            status: None,
+        };
+
+        let span2 = span1.clone(); // Duplicate
+
+        let mut records = vec![
+            RecordResponse::Log(log1),
+            RecordResponse::Log(log2),
+            RecordResponse::Span(span1),
+            RecordResponse::Span(span2),
+        ];
+
+        // Sort first (deduplication requires sorted input)
+        records.sort_by(|a, b| a.cmp(b));
+
+        assert_eq!(records.len(), 4);
+
+        // Deduplicate
+        deduplicate_records(&mut records);
+
+        // Should have removed duplicates
+        assert_eq!(records.len(), 2);
+
+        // Verify we have one log and one span
+        let log_count = records
+            .iter()
+            .filter(|r| matches!(r, RecordResponse::Log(_)))
+            .count();
+        let span_count = records
+            .iter()
+            .filter(|r| matches!(r, RecordResponse::Span(_)))
+            .count();
+
+        assert_eq!(log_count, 1);
+        assert_eq!(span_count, 1);
+    }
+
+    #[test]
+    fn test_record_sorting_with_same_timestamp() {
+        use crate::level::Level;
+
+        // Create records with the same timestamp but different types
+        let log = LogResponse {
+            timestamp: 100,
+            service_name: Some("test".to_string()),
+            level: Some(Level::Info),
+            target: None,
+            message: Some("log".to_string()),
+            span_id: None,
+            trace_id: None,
+            attributes: None,
+        };
+
+        let span = SpanResponse {
+            timestamp: 100,
+            trace_id: "trace1".to_string(),
+            span_id: "span1".to_string(),
+            parent_span_id: None,
+            service_name: Some("test".to_string()),
+            name: "span".to_string(),
+            kind: None,
+            start_time: 100,
+            end_time: Some(200),
+            level: Some(Level::Info),
+            target: None,
+            attributes: None,
+            events: None,
+            status: None,
+        };
+
+        let event = SpanEventResponse {
+            timestamp: 100,
+            span_id: "span1".to_string(),
+            trace_id: "trace1".to_string(),
+            service_name: Some("test".to_string()),
+            name: "event".to_string(),
+            level: Some(Level::Info),
+            target: None,
+            attributes: None,
+        };
+
+        let mut records = vec![
+            RecordResponse::Event(event),
+            RecordResponse::Span(span),
+            RecordResponse::Log(log),
+        ];
+
+        // Sort by cmp which includes timestamp, type discriminator, and unique key
+        records.sort_by(|a, b| a.cmp(b));
+
+        // Verify order: Log (0) < Span (1) < Event (2)
+        assert!(matches!(records[0], RecordResponse::Log(_)));
+        assert!(matches!(records[1], RecordResponse::Span(_)));
+        assert!(matches!(records[2], RecordResponse::Event(_)));
     }
 }
