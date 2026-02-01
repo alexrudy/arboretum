@@ -1,7 +1,11 @@
-// API client for Arboretum backend
+import { dev } from '$app/environment';
 
+// API client for Arboretum backend
 export type Level = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL';
 export const Levels: Level[] = ['TRACE', 'DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL'];
+
+// CONFIGURATION
+const config: { baseUrl: string } = { baseUrl: dev ? 'localhost:3333' : '' };
 
 export interface LogRecord {
 	type: 'log';
@@ -71,8 +75,8 @@ export interface DatabaseStats {
 export class ArboretumClient {
 	private baseUrl: string;
 
-	constructor(baseUrl: string = 'http://localhost:3333') {
-		this.baseUrl = baseUrl;
+	constructor() {
+		this.baseUrl = config.baseUrl;
 	}
 
 	async getRecords(params: {
