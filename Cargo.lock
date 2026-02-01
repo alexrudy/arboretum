@@ -105,6 +105,7 @@ dependencies = [
  "rust-embed",
  "serde",
  "serde_json",
+ "systemd-connector",
  "thiserror",
  "tokio",
  "tokio-rusqlite",
@@ -2173,6 +2174,16 @@ checksum = "8e1d1b10ced5ca923a1fcb8d03e96b8d3268065d724548c0211415ff6ac6bac4"
 dependencies = [
  "core-foundation-sys",
  "libc",
+]
+
+[[package]]
+name = "systemd-connector"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7dde1672dc93762d2e059d133866d8bc3c17a24efd88d11dfeb7625065f77df"
+dependencies = [
+ "thiserror",
+ "tracing",
 ]
 
 [[package]]
