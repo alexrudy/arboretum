@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time;
 use tower_http::cors::CorsLayer;
+use tower_http::decompression::RequestDecompressionLayer;
 use tower_http::trace::TraceLayer;
 use tracing::{Span, error, info};
 
@@ -39,6 +40,7 @@ pub fn create_router(db: Database) -> Router {
         .with_state(state)
         .fallback_service(web::EmbedServer::<web::Assets>::new())
         .layer(cors)
+        .layer(RequestDecompressionLayer::new().gzip(true))
         .layer(TraceLayer::new_for_http()
             .make_span_with(|request: &axum::http::Request<axum::body::Body>| {
                 tracing::debug_span!("http-request",
