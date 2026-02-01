@@ -14,6 +14,7 @@ use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
 use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tracing::{debug, error, warn};
 
 /// Paginated response wrapper
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,9 +31,9 @@ impl PaginatedResponse {
         let cursor = records.iter().map(|r| r.timestamp()).max();
 
         if records.is_empty() {
-            tracing::warn!("No records to include");
+            warn!("No records to include");
         } else {
-            tracing::debug!(cursor=%cursor.unwrap(), "fetched {} records", records.len());
+            debug!(cursor=%cursor.unwrap(), "fetched {} records", records.len());
         }
 
         Self { records, cursor }
@@ -78,10 +79,14 @@ pub async fn export_traces(
     State(state): State<Arc<AppState>>,
     body: axum::body::Bytes,
 ) -> Result<StatusCode, AppError> {
-    let request: ExportTraceServiceRequest = prost::Message::decode(body)
-        .map_err(|e| AppError::BadRequest(format!("Failed to decode protobuf: {}", e)))?;
+    let request: ExportTraceServiceRequest = prost::Message::decode(body).map_err(|e| {
+        debug!("Failed to decode protobuf: {}", e);
+        AppError::BadRequest(format!("Failed to decode protobuf: {}", e))
+    })?;
 
     let (spans, events) = convert_otlp_traces(request);
+
+    debug!("recording {} spans {} events", spans.len(), events.len());
 
     for span in spans {
         state
@@ -505,10 +510,11 @@ pub async fn query_records(
         span_id: None,
     };
 
-    let logs = state.db.query_logs(log_filter).await.map_err(|e| {
-        tracing::error!("Database error: {e}");
-        AppError::Internal(format!("Database error: {}", e))
-    })?;
+    let logs = state
+        .db
+        .query_logs(log_filter)
+        .await
+        .map_err(|e| AppError::Internal(format!("Database error: {}", e)))?;
     // Query spans
     let span_filter = SpanFilter {
         common: common.clone(),
@@ -517,10 +523,11 @@ pub async fn query_records(
         trace_id: None,
     };
 
-    let spans = state.db.query_spans(span_filter).await.map_err(|e| {
-        tracing::error!("Database error: {e}");
-        AppError::Internal(format!("Database error: {}", e))
-    })?;
+    let spans = state
+        .db
+        .query_spans(span_filter)
+        .await
+        .map_err(|e| AppError::Internal(format!("Database error: {}", e)))?;
 
     // Query span events
     let event_filter = SpanEventFilter {
@@ -534,10 +541,7 @@ pub async fn query_records(
         .db
         .query_span_events(event_filter)
         .await
-        .map_err(|e| {
-            tracing::error!("Database error: {e}");
-            AppError::Internal(format!("Database error: {}", e))
-        })?;
+        .map_err(|e| AppError::Internal(format!("Database error: {}", e)))?;
 
     // Convert to unified response format
     let mut records: Vec<RecordResponse> = Vec::new();
@@ -576,7 +580,10 @@ impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
-            AppError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            AppError::Internal(msg) => {
+                error!("Internal server error: {msg}");
+                (StatusCode::INTERNAL_SERVER_ERROR, msg)
+            }
         };
 
         (status, message).into_response()

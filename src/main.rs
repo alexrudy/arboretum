@@ -75,7 +75,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Arboretum starting...");
     info!("Configuration:");
-    info!("  Listen address: {}", config.listen_addr);
+    if !systemd {
+        info!("  Listen address: {}", config.listen_addr);
+    }
     info!("  Database path: {:?}", config.db_path);
     info!("  Max retention: {} seconds", config.max_retention_seconds);
     info!(
