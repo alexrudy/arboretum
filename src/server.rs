@@ -15,12 +15,18 @@ use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::{Span, error, info};
 
+use crate::web;
+
 /// Construct the Axum router with all routes and middleware
 pub fn create_router(db: Database) -> Router {
     let state = Arc::new(AppState::new(db));
 
     // Create a permissive CORS layer for development
-    let cors = CorsLayer::permissive();
+    let cors = if cfg!(debug_assertions) {
+        CorsLayer::permissive()
+    } else {
+        CorsLayer::new()
+    };
 
     Router::new()
         .route("/v1/logs", post(export_logs))
@@ -31,6 +37,7 @@ pub fn create_router(db: Database) -> Router {
         .route("/api/v1/records", get(query_records))
         .route("/api/v1/metadata", get(get_metadata))
         .with_state(state)
+        .fallback_service(web::EmbedServer::<web::Assets>::new())
         .layer(cors)
         .layer(TraceLayer::new_for_http()
             .make_span_with(|request: &axum::http::Request<axum::body::Body>| {

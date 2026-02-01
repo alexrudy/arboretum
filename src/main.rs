@@ -1,16 +1,6 @@
-mod config;
-mod db;
-mod handlers;
-mod level;
-mod otlp;
-mod server;
-
-#[cfg(feature = "tui")]
-mod tui;
-
-use crate::config::Config;
-use crate::db::Database;
-use crate::server::{create_router, spawn_cleanup_task};
+use arboretum::config::Config;
+use arboretum::db::Database;
+use arboretum::server::{create_router, spawn_cleanup_task};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use tracing::info;
@@ -55,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(feature = "tui")]
         Some(Command::Tui { url }) => {
             // For TUI, we don't want tracing output to interfere
-            tui::run(url).await?;
+            arboretum::tui::run(url).await?;
         }
         Some(Command::Serve) | None => {
             tracing_subscriber::registry()

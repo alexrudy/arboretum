@@ -2,7 +2,7 @@
 # This file shows all available configuration options with their default values
 
 # Address to listen on for incoming OTLP requests and API
-listen_addr = "0.0.0.0:3333"
+listen_addr = "127.0.0.1:3333"
 
 # Path to the SQLite database file
 db_path = "arboretum.db"

@@ -26,6 +26,7 @@ dev-frontend:
 dev-gen:
     cd arbor-gen && cargo run
 
+# Run the arboretum TUI
 dev-tui:
     cargo run --all-features --bin arboretum -- --config config.example.toml tui
 
@@ -51,7 +52,7 @@ test: test-backend test-frontend
 test-backend:
     cargo test
 
-# Run frontend tests (if any)
+# Run frontend tests
 test-frontend:
     cd web && npm test
 
@@ -82,19 +83,4 @@ init-config:
 
 # Start backend and frontend (without generator)
 serve:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    trap 'kill 0' SIGINT
-    cargo run --bin arboretum -- --config config.example.toml &
-    cd web && npm run dev &
-    wait
-
-# Show status of all services
-status:
-    @echo "Checking Arboretum services..."
-    @echo ""
-    @echo "Backend (port 3333):"
-    @lsof -i :3333 || echo "  Not running"
-    @echo ""
-    @echo "Frontend (port 5173):"
-    @lsof -i :5173 || echo "  Not running"
+    cargo run --bin arboretum -- --config config.example.toml
