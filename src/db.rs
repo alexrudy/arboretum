@@ -1,5 +1,5 @@
 use crate::level::Level;
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use std::path::Path;
 use std::sync::Arc;
 use tokio_rusqlite::Connection as AsyncConnection;
@@ -259,34 +259,16 @@ impl Database {
             let mut query = String::from("SELECT id, timestamp, service_name, level, target, message, span_id, trace_id, attributes FROM logs WHERE 1=1");
             let mut params: Vec<Box<dyn tokio_rusqlite::rusqlite::ToSql>> = Vec::new();
 
-            if let Some(service_name) = &filter.service_name {
-                query.push_str(" AND service_name = ?");
-                params.push(Box::new(service_name.clone()));
-            }
+            filter.cursor.filter_query(&mut query, &mut params);
+            filter.common.filter_query(&mut query, &mut params);
 
-            if let Some(level) = &filter.level {
-                // Filter for minimum level (e.g., if level is WARN, show WARN, ERROR, and FATAL)
-                query.push_str(" AND level >= ?");
-                params.push(Box::new(level.to_int()));
-            }
-
-            if let Some(target) = &filter.target {
-                query.push_str(" AND target = ?");
-                params.push(Box::new(target.clone()));
-            }
-
-            if let Some(message) = &filter.message {
-                query.push_str(" AND message LIKE ?");
-                params.push(Box::new(format!("%{}%", message)));
-            }
 
             if let Some(span_id) = &filter.span_id {
                 query.push_str(" AND span_id = ?");
                 params.push(Box::new(span_id.clone()));
             }
 
-            query.push_str(" ORDER BY timestamp DESC LIMIT ?");
-            params.push(Box::new(filter.limit.unwrap_or(1000)));
+            query.push_str(" ORDER BY timestamp ASC");
 
             let param_refs: Vec<&dyn tokio_rusqlite::rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
@@ -321,21 +303,9 @@ impl Database {
             let mut query = String::from("SELECT trace_id, span_id, parent_span_id, service_name, name, kind, start_time, end_time, level, target, attributes, events, status FROM spans WHERE 1=1");
             let mut params: Vec<Box<dyn tokio_rusqlite::rusqlite::ToSql>> = Vec::new();
 
-            if let Some(service_name) = &filter.service_name {
-                query.push_str(" AND service_name = ?");
-                params.push(Box::new(service_name.clone()));
-            }
+            filter.cursor.filter_spans(&mut query, &mut params);
+            filter.common.filter_query(&mut query, &mut params);
 
-            if let Some(level) = &filter.level {
-                // Filter for minimum level (e.g., if level is WARN, show WARN, ERROR, and FATAL)
-                query.push_str(" AND level >= ?");
-                params.push(Box::new(level.to_int()));
-            }
-
-            if let Some(target) = &filter.target {
-                query.push_str(" AND target = ?");
-                params.push(Box::new(target.clone()));
-            }
 
             if let Some(span_id) = &filter.span_id {
                 query.push_str(" AND span_id = ?");
@@ -347,8 +317,7 @@ impl Database {
                 params.push(Box::new(trace_id.clone()));
             }
 
-            query.push_str(" ORDER BY start_time DESC LIMIT ?");
-            params.push(Box::new(filter.limit.unwrap_or(1000)));
+            query.push_str(" ORDER BY start_time ASC");
 
             let param_refs: Vec<&dyn tokio_rusqlite::rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
@@ -446,22 +415,8 @@ impl Database {
             let mut query = String::from("SELECT span_id, trace_id, service_name, name, timestamp, level, target, attributes FROM span_events WHERE 1=1");
             let mut params: Vec<Box<dyn tokio_rusqlite::rusqlite::ToSql>> = Vec::new();
 
-            if let Some(service_name) = &filter.service_name {
-                query.push_str(" AND service_name = ?");
-                params.push(Box::new(service_name.clone()));
-            }
-
-            if let Some(level) = &filter.level {
-                // Filter for minimum level (e.g., if level is WARN, show WARN, ERROR, and FATAL)
-                query.push_str(" AND level >= ?");
-                params.push(Box::new(level.to_int()));
-            }
-
-            if let Some(target) = &filter.target {
-                query.push_str(" AND target = ?");
-                params.push(Box::new(target.clone()));
-            }
-
+            filter.cursor.filter_query(&mut query, &mut params);
+            filter.common.filter_query(&mut query, &mut params);
             if let Some(span_id) = &filter.span_id {
                 query.push_str(" AND span_id = ?");
                 params.push(Box::new(span_id.clone()));
@@ -472,8 +427,7 @@ impl Database {
                 params.push(Box::new(trace_id.clone()));
             }
 
-            query.push_str(" ORDER BY timestamp DESC LIMIT ?");
-            params.push(Box::new(filter.limit.unwrap_or(1000)));
+            query.push_str(" ORDER BY timestamp ASC");
 
             let param_refs: Vec<&dyn tokio_rusqlite::rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
@@ -636,33 +590,115 @@ pub struct SpanEventRecord {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct LogFilter {
+pub struct CursorFilter {
+    pub lookback_seconds: Option<i64>,
+    pub starting_at: Option<i64>,
+}
+
+impl CursorFilter {
+    pub fn filter_query(
+        &self,
+        query: &mut String,
+        params: &mut Vec<Box<dyn tokio_rusqlite::rusqlite::ToSql>>,
+    ) {
+        // Timestamp-based filtering
+        if let Some(lookback) = self.lookback_seconds {
+            tracing::debug!(%lookback, "Applying lookback filter");
+            let cutoff = Utc::now() - Duration::seconds(lookback);
+            query.push_str(" AND timestamp > ?");
+            params.push(Box::new(
+                cutoff.timestamp_nanos_opt().expect("valid timestamp"),
+            ));
+        }
+
+        if let Some(after) = self.starting_at {
+            tracing::debug!(%after, "Applying starting_at filter");
+            query.push_str(" AND timestamp > ?");
+            params.push(Box::new(after));
+        }
+    }
+
+    pub fn filter_spans(
+        &self,
+        query: &mut String,
+        params: &mut Vec<Box<dyn tokio_rusqlite::rusqlite::ToSql>>,
+    ) {
+        // Timestamp-based filtering
+        if let Some(lookback) = self.lookback_seconds {
+            tracing::debug!(%lookback, "Applying lookback filter");
+            let cutoff = Utc::now() - Duration::seconds(lookback);
+            query.push_str(" AND start_time > ?");
+            params.push(Box::new(
+                cutoff.timestamp_nanos_opt().expect("valid timestamp"),
+            ));
+        }
+
+        if let Some(after) = self.starting_at {
+            tracing::debug!(%after, "Applying starting_at filter");
+            query.push_str(" AND start_time > ?");
+            params.push(Box::new(after));
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CommonFilters {
     pub service_name: Option<String>,
     pub level: Option<Level>,
     pub target: Option<String>,
     pub message: Option<String>,
+}
+
+impl CommonFilters {
+    pub fn filter_query(
+        &self,
+        query: &mut String,
+        params: &mut Vec<Box<dyn tokio_rusqlite::rusqlite::ToSql>>,
+    ) {
+        if let Some(service_name) = &self.service_name {
+            query.push_str(" AND service_name = ?");
+            params.push(Box::new(service_name.clone()));
+        }
+
+        if let Some(level) = &self.level {
+            // Filter for minimum level (e.g., if level is WARN, show WARN, ERROR, and FATAL)
+            query.push_str(" AND level >= ?");
+            params.push(Box::new(level.to_int()));
+        }
+
+        if let Some(target) = &self.target {
+            query.push_str(" AND target = ?");
+            params.push(Box::new(target.clone()));
+        }
+
+        if let Some(message) = &self.message {
+            query.push_str(" AND message LIKE ?");
+            params.push(Box::new(format!("%{message}%")));
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct LogFilter {
+    pub common: CommonFilters,
+    pub cursor: CursorFilter,
     pub span_id: Option<String>,
-    pub limit: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct SpanFilter {
-    pub service_name: Option<String>,
-    pub level: Option<Level>,
-    pub target: Option<String>,
+    pub common: CommonFilters,
+    pub cursor: CursorFilter,
     pub span_id: Option<String>,
     pub trace_id: Option<String>,
-    pub limit: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct SpanEventFilter {
-    pub service_name: Option<String>,
-    pub level: Option<Level>,
-    pub target: Option<String>,
+    pub common: CommonFilters,
+    pub cursor: CursorFilter,
     pub span_id: Option<String>,
     pub trace_id: Option<String>,
-    pub limit: Option<i64>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -698,7 +734,10 @@ mod tests {
         db.insert_log(log.clone()).await.unwrap();
 
         let filter = LogFilter {
-            service_name: Some("test-service".to_string()),
+            common: CommonFilters {
+                service_name: Some("test-service".to_string()),
+                ..Default::default()
+            },
             ..Default::default()
         };
 
@@ -769,7 +808,10 @@ mod tests {
         db.insert_log(log2).await.unwrap();
 
         let filter = LogFilter {
-            level: Some(Level::Error),
+            common: CommonFilters {
+                level: Some(Level::Error),
+                ..Default::default()
+            },
             ..Default::default()
         };
 

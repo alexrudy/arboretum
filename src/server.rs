@@ -13,7 +13,7 @@ use std::time::Duration;
 use tokio::time;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
-use tracing::{error, info};
+use tracing::{Span, error, info};
 
 /// Construct the Axum router with all routes and middleware
 pub fn create_router(db: Database) -> Router {
@@ -32,7 +32,23 @@ pub fn create_router(db: Database) -> Router {
         .route("/api/v1/metadata", get(get_metadata))
         .with_state(state)
         .layer(cors)
-        .layer(TraceLayer::new_for_http())
+        .layer(TraceLayer::new_for_http()
+            .make_span_with(|request: &axum::http::Request<axum::body::Body>| {
+                tracing::debug_span!("http-request",
+                    method = %request.method(),
+                    uri = %request.uri(),
+                    version = ?request.version())
+            })
+            .on_request(|_: &axum::http::Request<axum::body::Body> , _: &Span| {
+                tracing::debug!("started processing request");
+            })
+            .on_response(|response: &axum::http::Response<axum::body::Body>, latency: Duration, _span: &Span| {
+                if response.status().is_success() {
+                    tracing::debug!(status=%response.status(), latency=%format!("{} ms", latency.as_millis()), "finished processing request");
+                } else {
+                    tracing::warn!(status=%response.status(), latency=%format!("{} ms", latency.as_millis()), "failed to process request");
+                }
+            } ))
 }
 
 /// Spawn a background task that periodically cleans up old records

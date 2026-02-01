@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Level } from '$lib/api';
+	import SelectLevel from './ui/SelectLevel.svelte';
 
 	let {
 		serviceName = $bindable(''),
@@ -58,15 +59,7 @@
 				/>
 			</div>
 
-			<select class="form-select" style="max-width: 150px;" bind:value={level}>
-				<option value={null}>All Levels</option>
-				<option value="TRACE">TRACE</option>
-				<option value="DEBUG">DEBUG</option>
-				<option value="INFO">INFO</option>
-				<option value="WARN">WARN</option>
-				<option value="ERROR">ERROR</option>
-				<option value="FATAL">FATAL</option>
-			</select>
+			<SelectLevel bind:level />
 
 			<button class="btn btn-primary" onclick={handleSearch}>
 				<i class="bi bi-search"></i>

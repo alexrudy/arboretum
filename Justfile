@@ -16,7 +16,7 @@ dev:
 
 # Run the Arboretum backend server
 dev-backend:
-    cargo run --bin arboretum -- --config config.example.toml
+    cargo run --all-features --bin arboretum -- --config config.example.toml
 
 # Run the frontend Vite development server
 dev-frontend:
@@ -25,6 +25,9 @@ dev-frontend:
 # Run the trace generator
 dev-gen:
     cd arbor-gen && cargo run
+
+dev-tui:
+    cargo run --all-features --bin arboretum -- --config config.example.toml tui
 
 # Build all components
 build: build-backend build-frontend build-gen

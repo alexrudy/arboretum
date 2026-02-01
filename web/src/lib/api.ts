@@ -1,6 +1,7 @@
 // API client for Arboretum backend
 
 export type Level = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL';
+export const Levels: Level[] = ['TRACE', 'DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL'];
 
 export interface LogRecord {
 	type: 'log';
@@ -52,6 +53,11 @@ export interface EventRecord {
 
 export type LogOrSpan = LogRecord | SpanRecord | EventRecord;
 
+export interface PaginatedResponse<T> {
+	records: T[];
+	cursor: string | null;
+}
+
 export interface DatabaseStats {
 	total_logs: number;
 	total_spans: number;
@@ -73,15 +79,16 @@ export class ArboretumClient {
 		service_name?: string;
 		target?: string;
 		level?: string;
-		limit?: number;
-		offset?: number;
-	}): Promise<LogOrSpan[]> {
+		cursor?: string;
+		lookback?: number;
+	}): Promise<PaginatedResponse<LogOrSpan>> {
 		const queryParams = new URLSearchParams();
 		if (params.service_name) queryParams.append('service_name', params.service_name);
 		if (params.target) queryParams.append('target', params.target);
 		if (params.level) queryParams.append('level', params.level);
-		if (params.limit) queryParams.append('limit', params.limit.toString());
-		if (params.offset !== undefined) queryParams.append('offset', params.offset.toString());
+		if (params.cursor) queryParams.append('cursor', params.cursor);
+
+		if (params.lookback !== undefined) queryParams.append('lookback', params.lookback.toString());
 
 		const url = `${this.baseUrl}/api/v1/records?${queryParams}`;
 		const response = await fetch(url);
@@ -96,7 +103,7 @@ export class ArboretumClient {
 		target?: string;
 		trace_id?: string;
 		span_id?: string;
-	}): Promise<SpanRecord[]> {
+	}): Promise<PaginatedResponse<SpanRecord>> {
 		const queryParams = new URLSearchParams();
 		if (params.service_name) queryParams.append('service_name', params.service_name);
 		if (params.target) queryParams.append('target', params.target);
@@ -117,15 +124,13 @@ export class ArboretumClient {
 		trace_id?: string;
 		span_id?: string;
 		level?: string;
-		limit?: number;
-	}): Promise<EventRecord[]> {
+	}): Promise<PaginatedResponse<EventRecord>> {
 		const queryParams = new URLSearchParams();
 		if (params.service_name) queryParams.append('service_name', params.service_name);
 		if (params.target) queryParams.append('target', params.target);
 		if (params.trace_id) queryParams.append('trace_id', params.trace_id);
 		if (params.span_id) queryParams.append('span_id', params.span_id);
 		if (params.level) queryParams.append('level', params.level);
-		if (params.limit) queryParams.append('limit', params.limit.toString());
 
 		const url = `${this.baseUrl}/api/v1/events?${queryParams}`;
 		const response = await fetch(url);

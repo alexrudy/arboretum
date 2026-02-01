@@ -4,152 +4,103 @@
 	import { formatDuration } from '$lib/utils';
 	import SpanTree from './SpanTree.svelte';
 	import SpanEventList from './SpanEventList.svelte';
+	import DetailItem from './ui/DetailItem.svelte';
+	import { manager } from '$lib/manager.svelte';
+	import AttributesDisplay from './ui/AttributesDisplay.svelte';
 
 	let {
 		span,
 		handleRecordClick
 	}: { span: SpanRecord; handleRecordClick: (record: LogOrSpan) => void } = $props();
 
-	let allSpans = $state<SpanRecord[]>([]);
-	let allEvents = $state<EventRecord[]>([]);
-	let loading = $state(true);
-
-	// Load all spans and events in the trace to build the tree
-	async function loadTraceData() {
-		try {
-			const [spans, events] = await Promise.all([
-				api.getSpans({ trace_id: span.trace_id }),
-				api.getEvents({ trace_id: span.trace_id })
-			]);
-			allSpans = spans as SpanRecord[];
-			allEvents = events;
-		} catch (error) {
-			console.error('Failed to load trace data:', error);
-			allSpans = [span];
-			allEvents = [];
-		} finally {
-			loading = false;
-		}
-	}
-
-	$effect(() => {
-		if (span) {
-			loading = true;
-			loadTraceData();
-		}
-	});
+	const records = $derived.by(() => manager.getTrace(span.trace_id));
+	const allEvents = $derived.by(() => records.filter((record) => record.type === 'event'));
+	const allSpans = $derived.by(() => records.filter((record) => record.type === 'span'));
+	let attributesExpanded = $state(false);
 
 	let duration = $derived(formatDuration(span.start_time, span.end_time));
 </script>
 
-<div class="card mt-2 mb-3">
-	<div class="card-body">
-		<h6 class="card-title">
-			<i class="bi bi-diagram-3 text-info"></i>
-			Span Details
-		</h6>
+<div class="card-body">
+	<h6 class="card-title">
+		<i class="bi bi-diagram-3 text-info"></i>
+		Span Details
+	</h6>
 
-		{#if !loading}
-			<div class="mb-3">
-				<strong class="text-info">Trace Tree:</strong>
-				<div class="mt-2 p-3 bg-darker rounded">
-					<SpanTree
-						spans={allSpans}
-						events={allEvents}
-						currentSpanId={span.span_id}
-						{handleRecordClick}
-					/>
-				</div>
-			</div>
-		{:else}
-			<div class="text-center text-muted my-3">
-				<i class="bi bi-hourglass-split"></i>
-				Loading trace tree...
-			</div>
-		{/if}
-
-		<div class="row g-3 mt-1">
-			<div class="col-md-6">
-				<strong class="text-info">Name:</strong>
-				<span class="ms-2">{span.name}</span>
-			</div>
-
-			{#if span.service_name}
-				<div class="col-md-6">
-					<strong class="text-info">Service:</strong>
-					<span class="ms-2">{span.service_name}</span>
-				</div>
-			{/if}
-
-			{#if span.target}
-				<div class="col-md-6">
-					<strong class="text-info">Target:</strong>
-					<span class="ms-2 font-monospace small">{span.target}</span>
-				</div>
-			{/if}
-
-			<div class="col-md-6">
-				<strong class="text-info">Duration:</strong>
-				<span class="ms-2">{duration}</span>
-			</div>
-
-			<div class="col-md-6">
-				<strong class="text-info">Trace ID:</strong>
-				<span class="ms-2 font-monospace small">{span.trace_id}</span>
-			</div>
-
-			<div class="col-md-6">
-				<strong class="text-info">Span ID:</strong>
-				<span class="ms-2 font-monospace small">{span.span_id}</span>
-			</div>
-
-			{#if span.parent_span_id}
-				<div class="col-md-6">
-					<strong class="text-info">Parent Span ID:</strong>
-					<span class="ms-2 font-monospace small">{span.parent_span_id}</span>
-				</div>
-			{/if}
-
-			{#if span.kind}
-				<div class="col-md-6">
-					<strong class="text-info">Kind:</strong>
-					<span class="ms-2">{span.kind}</span>
-				</div>
-			{/if}
-
-			{#if span.status}
-				<div class="col-md-6">
-					<strong class="text-info">Status:</strong>
-					<span class="ms-2">{span.status}</span>
-				</div>
-			{/if}
+	<div class="mb-3">
+		<strong class="text-info">Trace Tree:</strong>
+		<div class="mt-2 p-3 bg-darker rounded">
+			<SpanTree
+				spans={allSpans}
+				events={allEvents}
+				currentSpanId={span.span_id}
+				{handleRecordClick}
+			/>
 		</div>
+	</div>
 
-		{#if span.events && span.events.length > 0}
-			<SpanEventList events={span.events} spanLevel={span.level} />
+	<div class="row g-1 mt-1">
+		<DetailItem label="Name" className="col-md-6">
+			<span>{span.name}</span>
+		</DetailItem>
+
+		{#if span.service_name}
+			<DetailItem label="Service" className="col-md-6">
+				<span>{span.service_name}</span>
+			</DetailItem>
 		{/if}
 
-		{#if span.attributes && Object.keys(span.attributes).length > 0}
-			<div class="mt-3">
-				<strong class="text-info">Attributes:</strong>
-				<pre class="bg-darker p-2 rounded mt-2 small">{JSON.stringify(
-						span.attributes,
-						null,
-						2
-					)}</pre>
-			</div>
+		{#if span.target}
+			<DetailItem label="Target" className="col-md-6">
+				<span class="font-monospace small">{span.target}</span>
+			</DetailItem>
+		{/if}
+
+		<DetailItem label="Duration" className="col-md-6">
+			<span>{duration}</span>
+		</DetailItem>
+
+		<DetailItem label="Trace ID" className="col-md-6">
+			<span class="font-monospace small">{span.trace_id}</span>
+		</DetailItem>
+
+		<DetailItem label="Span ID" className="col-md-6">
+			<span class="font-monospace small">{span.span_id}</span>
+		</DetailItem>
+
+		{#if span.parent_span_id}
+			<DetailItem label="Parent Span ID" className="col-md-6">
+				<span class="font-monospace small">{span.parent_span_id}</span>
+			</DetailItem>
+		{/if}
+
+		{#if span.kind}
+			<DetailItem label="Kind" className="col-md-6">
+				<span>{span.kind}</span>
+			</DetailItem>
+		{/if}
+
+		{#if span.status && span.status !== 'Unset'}
+			<DetailItem label="Status" className="col-md-6">
+				<span>{span.status}</span>
+			</DetailItem>
 		{/if}
 	</div>
+
+	{#if span.events && span.events.length > 0}
+		<div class="row">
+			<SpanEventList events={span.events} spanLevel={span.level} />
+		</div>
+	{/if}
+
+	{#if span.attributes && Object.keys(span.attributes).length > 0}
+		<div class="row mt-3">
+			<AttributesDisplay attrs={span.attributes} />
+		</div>
+	{/if}
 </div>
 
 <style>
-	pre {
-		color: #e0e0e0;
-		margin: 0;
-		max-height: 400px;
-		overflow: auto;
-	}
-
 	.font-monospace {
 		font-family: 'Courier New', Courier, monospace;
 	}

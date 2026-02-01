@@ -11,8 +11,8 @@
 	}: { record: LogOrSpan; expanded?: boolean; onclick?: () => void } = $props();
 </script>
 
-<div class="list-group-item list-group-item-action">
-	<button type="button" class="list-group-item-button d-flex align-items-center gap-3" {onclick}>
+<div class="card-head record-item-action">
+	<button type="button" class="record-item-button d-flex align-items-center gap-3" {onclick}>
 		<TimestampLabel timestamp={record.timestamp} />
 
 		{#if record.type === 'log'}
@@ -45,12 +45,12 @@
 </div>
 
 <style>
-	.list-group-item {
+	.record-item-action {
 		cursor: pointer;
 		transition: background-color 0.15s ease-in-out;
 	}
 
-	.list-group-item-button {
+	.record-item-button {
 		width: 100%;
 		border: none;
 		background-color: transparent;

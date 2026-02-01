@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { LogOrSpan } from '$lib/api';
-	import type { TreeNode } from '$lib/types';
+	import { getRecordID, type TreeNode } from '$lib/types';
 	import Self from './SpanTreeNode.svelte';
 	import { formatDuration, getLevelColor } from '$lib/utils';
 
@@ -59,7 +59,11 @@
 			{#if depth > 0}
 				<span class="tree-line text-muted">└─</span>
 			{/if}
-			<button type="button" class="span-link" onclick={() => handleRecordClick(node.span)}>
+			<a
+				href={`#${getRecordID(node.span)}`}
+				class="span-link"
+				onclick={() => handleRecordClick(node.span)}
+			>
 				<i class="bi bi-box-fill text-warning"></i>
 				<span class="badge bg-{levelColor}">{node.span.level || 'NONE'}</span>
 				<strong>{node.span.name}</strong>
@@ -67,7 +71,7 @@
 				{#if isCurrentSpan}
 					<i class="bi bi-arrow-left text-info"></i>
 				{/if}
-			</button>
+			</a>
 		</div>
 
 		<!-- Timeline visualization -->

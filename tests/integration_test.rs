@@ -137,12 +137,13 @@ async fn test_otlp_log_ingestion_and_query() {
 
     assert_eq!(response.status(), 200);
 
-    let logs: Vec<serde_json::Value> = response.json().await.unwrap();
-    assert_eq!(logs.len(), 1);
-    assert_eq!(logs[0]["message"], "Integration test log");
-    assert_eq!(logs[0]["service_name"], "integration-test");
-    assert_eq!(logs[0]["level"], "INFO");
-    assert_eq!(logs[0]["target"], "integration::test");
+    let logs: serde_json::Value = response.json().await.unwrap();
+    let records = logs["records"].as_array().unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0]["message"], "Integration test log");
+    assert_eq!(records[0]["service_name"], "integration-test");
+    assert_eq!(records[0]["level"], "INFO");
+    assert_eq!(records[0]["target"], "integration::test");
 }
 
 #[tokio::test]
@@ -233,11 +234,13 @@ async fn test_otlp_trace_ingestion_and_query() {
 
     assert_eq!(response.status(), 200);
 
-    let spans: Vec<serde_json::Value> = response.json().await.unwrap();
-    assert_eq!(spans.len(), 1);
-    assert_eq!(spans[0]["name"], "integration_test_span");
-    assert_eq!(spans[0]["service_name"], "trace-test");
-    assert_eq!(spans[0]["target"], "integration::test");
+    let spans: serde_json::Value = response.json().await.unwrap();
+    let records = spans["records"].as_array().unwrap();
+
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0]["name"], "integration_test_span");
+    assert_eq!(records[0]["service_name"], "trace-test");
+    assert_eq!(records[0]["target"], "integration::test");
 }
 
 #[tokio::test]
@@ -314,10 +317,12 @@ async fn test_log_filtering() {
 
     assert_eq!(response.status(), 200);
 
-    let logs: Vec<serde_json::Value> = response.json().await.unwrap();
-    assert_eq!(logs.len(), 1);
-    assert_eq!(logs[0]["level"], "ERROR");
-    assert_eq!(logs[0]["message"], "ERROR message");
+    let logs: serde_json::Value = response.json().await.unwrap();
+    let records = logs["records"].as_array().unwrap();
+
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0]["level"], "ERROR");
+    assert_eq!(records[0]["message"], "ERROR message");
 }
 
 #[tokio::test]
@@ -450,9 +455,14 @@ async fn test_record_response_shape() {
         .await
         .unwrap();
 
+    if response.error_for_status_ref().is_err() {
+        eprintln!("{}", response.text().await.unwrap());
+        panic!("Error response");
+    }
     assert_eq!(response.status(), 200);
 
-    let records: Vec<serde_json::Value> = response.json().await.unwrap();
+    let paginated: serde_json::Value = response.json().await.unwrap();
+    let records = paginated["records"].as_array().unwrap();
     assert_eq!(records.len(), 3); // 1 log + 1 span + 1 event
 
     // Validate log response shape

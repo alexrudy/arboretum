@@ -72,15 +72,26 @@ The TUI displays:
 - Interactive filtering by target and level
 
 **TUI Controls:**
-- `f` - Edit filter (format: `target=level`, e.g., `my_module=warn,other=info`)
+- `f` - Edit filter
 - `q` - Quit
 - Enter - Apply filter
 - Esc - Cancel filter editing
 
+**Filter Syntax** (similar to `tracing_subscriber`):
+- `level` - Global directive (applies to all records), e.g., `warn` shows WARN+ for everything
+- `target=level` - Target directive (matches specific target prefix), e.g., `my_module=debug`
+- Directives are comma-separated and applied in order - **first match wins**
+- Global directives match all records (including those without targets)
+- Target directives only match if the target starts with the prefix
+- Order matters: put more specific directives before more general ones
+
 **Filter Examples:**
-- `my_module=info` - Show INFO and above for my_module
-- `=warn` - Set default level to WARN
-- `my_module=info,other=debug` - Multiple filters
+- `warn` - Show WARN and above for everything
+- `my_module=debug` - Show DEBUG+ for my_module, all levels for everything else
+- `my_module=debug,warn` - DEBUG+ for my_module (first match), WARN+ for everything else (second match)
+- `warn,my_module=debug` - WARN+ for everything (global matches first, so my_module rule never applies!)
+- `my_module=trace,other=warn,info` - TRACE for my_module, WARN for other, INFO for everything else
+- `=warn` - Alternative syntax for global directive (same as bare `warn`)
 
 **Usage Workflow:**
 1. Start the Arboretum server: `./target/release/arboretum`

@@ -1,23 +1,11 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 
-	let { label, children }: { label: string; children: Snippet } = $props();
+	let { label, className, children }: { label: string; className?: string; children: Snippet } =
+		$props();
 </script>
 
-<div class="detail-item">
-	<strong>{label}:</strong>
-	<span>{@render children()}</span>
+<div class={`detail-item ${className ?? ''}`}>
+	<strong class="text-info me-2">{label}:</strong>
+	{@render children()}
 </div>
-
-<style>
-	.detail-item {
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-	}
-
-	.detail-item strong {
-		color: #adb5bd;
-		font-size: 0.875rem;
-	}
-</style>
