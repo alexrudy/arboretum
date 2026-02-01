@@ -1,17 +1,20 @@
 <script lang="ts">
 	import type { Level } from '$lib/api';
+	import type { Snippet } from 'svelte';
 	import SelectLevel from './ui/SelectLevel.svelte';
 
 	let {
 		serviceName = $bindable(''),
 		target = $bindable(''),
 		level = $bindable<Level | null>(null),
-		onsearch
+		onsearch,
+		children
 	}: {
 		serviceName?: string;
 		target?: string;
 		level?: Level | null;
 		onsearch?: (detail: { serviceName: string; target: string; level: Level | null }) => void;
+		children?: Snippet;
 	} = $props();
 
 	function handleSearch() {
@@ -65,6 +68,9 @@
 				<i class="bi bi-search"></i>
 				Search
 			</button>
+		</div>
+		<div>
+			{@render children?.()}
 		</div>
 	</div>
 </nav>

@@ -7,12 +7,15 @@
 	}: { spans: boolean; root: boolean; events: boolean; logs: boolean } = $props();
 </script>
 
-<div class="bg-dark border-bottom border-secondary px-3 py-2">
+<div class="bg-dark border-bottom border-secondary">
 	<div class="btn-group">
 		<button
 			class={`btn btn-sm btn-secondary ${spans ? 'enabled' : ''}`}
 			onclick={() => {
 				spans = !spans;
+				if (!spans) {
+					root = false;
+				}
 			}}
 		>
 			<i class="bi bi-diagram-3 text-info"></i>
@@ -20,6 +23,7 @@
 		</button>
 		<button
 			class={`btn btn-sm btn-secondary ${root ? 'enabled' : ''}`}
+			disabled={!spans}
 			onclick={() => {
 				root = !root;
 			}}>Roots</button

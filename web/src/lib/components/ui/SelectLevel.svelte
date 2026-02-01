@@ -17,9 +17,11 @@
 
 		{#if open}
 			<div class="position-relative level-menu">
-				<div class="position-absolute top-100 start-0 d-flex flex-column bg-dark rounded mt-2">
+				<div
+					class="position-absolute top-100 start-0 d-flex flex-column bg-dark rounded border border-secondary mt-2"
+				>
 					{#each levels as selectLevel}
-						<div class="level-select-item px-2 py-1">
+						<div class="level-select-item rounded px-2 py-1">
 							<button
 								class="level-button"
 								onclick={() => {
@@ -77,7 +79,6 @@
 
 	.level-menu {
 		background-color: var(--bs-secondary);
-		border-radius: var(--border-radius);
 		box-shadow: var(--box-shadow);
 		padding: var(--spacing-sm);
 		width: 150px;

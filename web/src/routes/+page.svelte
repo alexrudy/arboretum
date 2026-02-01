@@ -43,6 +43,18 @@
 			return false;
 		}
 
+		if (!showEvents && record.type === 'event') {
+			return false;
+		}
+
+		if (!showLogs && record.type === 'log') {
+			return false;
+		}
+
+		if (!showSpans && record.type === 'span') {
+			return false;
+		}
+
 		if (showOnlyRootSpans) {
 			return record.type === 'span' && !record.parent_span_id;
 		}
@@ -173,15 +185,15 @@
 </script>
 
 <div class="d-flex flex-column vh-100">
-	<NavigationBar bind:serviceName bind:target bind:level onsearch={handleSearch} />
-
-	<!-- View controls -->
-	<ViewFilters
-		bind:root={showOnlyRootSpans}
-		bind:events={showEvents}
-		bind:logs={showLogs}
-		bind:spans={showSpans}
-	/>
+	<NavigationBar bind:serviceName bind:target bind:level onsearch={handleSearch}>
+		<!-- View controls -->
+		<ViewFilters
+			bind:root={showOnlyRootSpans}
+			bind:events={showEvents}
+			bind:logs={showLogs}
+			bind:spans={showSpans}
+		/>
+	</NavigationBar>
 
 	<main class="flex-grow-1 overflow-auto pb-5" bind:this={scrollContainer}>
 		<div class="container-fluid py-3">

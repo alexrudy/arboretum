@@ -26,13 +26,13 @@
 					<span class=" ms-1">database</span>
 				</div>
 				<div class="col">
-					<i class="bi bi-info-circle text-info"></i>
-					<span class="">Arboretum</span>
-				</div>
-				<div class="col">
 					<i class="bi bi-database text-info"></i>
 					<span class="">{manager.records.length.toLocaleString()}</span>
 					<span class="ms-1">loaded records</span>
+				</div>
+				<div class="col">
+					<i class="bi bi-info-circle text-info"></i>
+					<span class="">Arboretum</span>
 				</div>
 			</div>
 		{:else}
