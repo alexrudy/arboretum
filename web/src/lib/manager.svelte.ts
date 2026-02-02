@@ -1,42 +1,59 @@
 import {
 	api,
 	type ArboretumClient,
+	type GetRecordParams,
+	type Level,
 	type LogOrSpan,
-	type PaginatedResponse,
-	type SpanRecord
+	type PaginatedResponse
 } from './api';
 
 export class ArboretumManager {
 	private api: ArboretumClient;
-	private cursor: string | null = $state(null);
+	private latest: string | null = $state(null);
+	private max_records: number = 2000;
 	records: LogOrSpan[] = $state([]);
 	loading: boolean = $state(false);
 
+	service_name: string | null = $state(null);
+	target: string | null = $state(null);
+	message: string | null = $state(null);
+	level: Level | null = $state(null);
+	trace_id: string | null = $state(null);
+
 	constructor(api: ArboretumClient) {
 		this.api = api;
-		this.cursor = null;
+		this.latest = null;
 	}
 
-	getTrace(trace_id: string): LogOrSpan[] {
-		return this.records.filter((record) => record.trace_id === trace_id);
-	}
-
-	async checkForNewRecords() {
+	async loadRecords({ replace }: { replace?: boolean }) {
 		if (this.loading) {
 			return;
 		}
-
 		this.loading = true;
 		try {
 			let response: PaginatedResponse<LogOrSpan>;
 
-			if (this.cursor) {
-				response = await this.api.getRecords({ cursor: this.cursor });
+			if (!replace && this.latest) {
+				response = await this.api.getRecords({
+					since: this.latest,
+					service_name: this.service_name!,
+					target: this.target!,
+					message: this.message!,
+					level: this.level!,
+					trace_id: this.trace_id!
+				});
 			} else {
-				response = await this.api.getRecords({ lookback: 10 });
+				response = await this.api.getRecords({
+					lookback: 10,
+					service_name: this.service_name!,
+					target: this.target!,
+					message: this.message!,
+					level: this.level!,
+					trace_id: this.trace_id!
+				});
 			}
 
-			if (response.records.length > 0 && this.records.length > 0) {
+			if (!replace && response.records.length > 0 && this.records.length > 0) {
 				// Check if there are newer records than what we have
 				const latestTimestamp = response.records[response.records.length - 1].timestamp;
 				const currentLatestTimestamp = this.records
@@ -54,12 +71,12 @@ export class ArboretumManager {
 					}
 					console.log('New records found:', newRecords.length);
 				}
-			} else if (response.records.length > 0) {
+			} else {
 				this.records = response.records;
 			}
 
-			if (this.records.length > 2000) {
-				this.records = this.records.slice(-2000);
+			if (this.records.length > this.max_records) {
+				this.records = this.records.slice(-this.max_records);
 			}
 		} catch (e) {
 			console.error('Failed to check for new records:', e);
@@ -151,5 +168,3 @@ function flattenHierarchy(hierarchy: HierarchicalRecord[]): HierarchicalRecord[]
 	hierarchy.forEach(traverse);
 	return result;
 }
-
-export const manager = new ArboretumManager(api);

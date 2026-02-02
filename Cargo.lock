@@ -103,6 +103,7 @@ dependencies = [
  "hex",
  "indoc",
  "mime_guess",
+ "npm_rs",
  "opentelemetry",
  "opentelemetry-proto",
  "prost",
@@ -1377,6 +1378,15 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "tempfile",
+]
+
+[[package]]
+name = "npm_rs"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1454347ca3c562570eff8af4a09445783dc4b7ccd00853390a7f88f76037b55"
+dependencies = [
+ "cfg-if",
 ]
 
 [[package]]

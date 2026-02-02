@@ -5,7 +5,7 @@ export type Level = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL';
 export const Levels: Level[] = ['TRACE', 'DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL'];
 
 // CONFIGURATION
-const config: { baseUrl: string } = { baseUrl: dev ? 'localhost:3333' : '' };
+const config: { baseUrl: string } = { baseUrl: dev ? '' : '' };
 
 export interface LogRecord {
 	type: 'log';
@@ -59,7 +59,7 @@ export type LogOrSpan = LogRecord | SpanRecord | EventRecord;
 
 export interface PaginatedResponse<T> {
 	records: T[];
-	cursor: string | null;
+	since: string | null;
 }
 
 export interface DatabaseStats {
@@ -72,6 +72,18 @@ export interface DatabaseStats {
 	database_size_bytes: number | null;
 }
 
+export interface GetRecordParams {
+	service_name?: string;
+	target?: string;
+	level?: string;
+	message?: string;
+	since?: string;
+	until?: string;
+	lookback?: number;
+	span_id?: string;
+	trace_id?: string;
+}
+
 export class ArboretumClient {
 	private baseUrl: string;
 
@@ -79,18 +91,16 @@ export class ArboretumClient {
 		this.baseUrl = config.baseUrl;
 	}
 
-	async getRecords(params: {
-		service_name?: string;
-		target?: string;
-		level?: string;
-		cursor?: string;
-		lookback?: number;
-	}): Promise<PaginatedResponse<LogOrSpan>> {
+	async getRecords(params: GetRecordParams): Promise<PaginatedResponse<LogOrSpan>> {
 		const queryParams = new URLSearchParams();
 		if (params.service_name) queryParams.append('service_name', params.service_name);
 		if (params.target) queryParams.append('target', params.target);
 		if (params.level) queryParams.append('level', params.level);
-		if (params.cursor) queryParams.append('cursor', params.cursor);
+		if (params.message) queryParams.append('message', params.message);
+		if (params.since) queryParams.append('since', params.since);
+		if (params.until) queryParams.append('until', params.until);
+		if (params.span_id) queryParams.append('span_id', params.span_id);
+		if (params.trace_id) queryParams.append('trace_id', params.trace_id);
 
 		if (params.lookback !== undefined) queryParams.append('lookback', params.lookback.toString());
 

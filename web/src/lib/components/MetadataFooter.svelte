@@ -1,7 +1,6 @@
 <script lang="ts">
 	import type { DatabaseStats } from '$lib/api';
 	import { formatBytes } from '$lib/utils';
-	import { manager } from '$lib/manager.svelte';
 
 	let { stats = $bindable(null) }: { stats?: DatabaseStats | null } = $props();
 </script>
@@ -24,11 +23,6 @@
 					<i class="bi bi-hdd text-info"></i>
 					<strong class="ms-1">{formatBytes(stats.database_size_bytes)}</strong>
 					<span class=" ms-1">database</span>
-				</div>
-				<div class="col">
-					<i class="bi bi-database text-info"></i>
-					<span class="">{manager.records.length.toLocaleString()}</span>
-					<span class="ms-1">loaded records</span>
 				</div>
 				<div class="col">
 					<i class="bi bi-info-circle text-info"></i>

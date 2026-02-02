@@ -13,6 +13,11 @@ export default defineConfig({
 			}
 		}
 	},
+	server: {
+		proxy: {
+			'/api': 'http://bombadil.xyz:3333/'
+		}
+	},
 	test: {
 		expect: { requireAssertions: true },
 		projects: [

@@ -9,14 +9,14 @@ dev:
     #!/usr/bin/env bash
     set -euo pipefail
     trap 'kill 0' SIGINT
-    cargo run --bin arboretum -- --config config.example.toml &
+    cargo run --bin arboretum --  &
     cd web && npm run dev &
     cd arbor-gen && cargo run -- --quiet &
     wait
 
 # Run the Arboretum backend server
 dev-backend:
-    cargo run --all-features --bin arboretum -- --config config.example.toml
+    cargo run --all-features --bin arboretum
 
 # Run the frontend Vite development server
 dev-frontend:
@@ -28,7 +28,7 @@ dev-gen:
 
 # Run the arboretum TUI
 dev-tui:
-    cargo run --all-features --bin arboretum -- --config config.example.toml tui
+    cargo run --all-features --bin arboretum -- tui
 
 # Build all components
 build: build-backend build-frontend build-gen
@@ -83,4 +83,4 @@ init-config:
 
 # Start backend and frontend (without generator)
 serve:
-    cargo run --bin arboretum -- --config config.example.toml
+    cargo run --bin arboretum

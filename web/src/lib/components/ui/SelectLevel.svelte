@@ -2,7 +2,10 @@
 	import type { Level } from '$lib/api';
 	import LevelBadge from './LevelBadge.svelte';
 
-	let { level = $bindable() } = $props();
+	let {
+		level = $bindable(),
+		onChange
+	}: { level: Level | null; onChange: (level: Level | null) => void } = $props();
 	let open = $state(false);
 	const levels: (Level | null)[] = [null, 'TRACE', 'DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL'];
 </script>
@@ -27,6 +30,7 @@
 								onclick={() => {
 									open = false;
 									level = selectLevel;
+									onChange(level);
 								}}
 								type="button"
 							>

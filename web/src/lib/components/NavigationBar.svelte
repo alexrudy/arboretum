@@ -1,24 +1,18 @@
 <script lang="ts">
-	import type { Level } from '$lib/api';
 	import type { Snippet } from 'svelte';
 	import SelectLevel from './ui/SelectLevel.svelte';
+	import type { ArboretumManager } from '$lib/manager.svelte';
 
 	let {
-		serviceName = $bindable(''),
-		target = $bindable(''),
-		level = $bindable<Level | null>(null),
-		onsearch,
+		manager,
 		children
 	}: {
-		serviceName?: string;
-		target?: string;
-		level?: Level | null;
-		onsearch?: (detail: { serviceName: string; target: string; level: Level | null }) => void;
+		manager: ArboretumManager;
 		children?: Snippet;
 	} = $props();
 
 	function handleSearch() {
-		onsearch?.({ serviceName, target, level });
+		manager.loadRecords({ replace: true });
 	}
 
 	function handleKeyPress(event: KeyboardEvent) {
@@ -44,7 +38,7 @@
 					type="text"
 					class="form-control"
 					placeholder="Service name"
-					bind:value={serviceName}
+					bind:value={manager.service_name}
 					onkeypress={handleKeyPress}
 				/>
 			</div>
@@ -57,12 +51,25 @@
 					type="text"
 					class="form-control"
 					placeholder="Target (e.g., module::path)"
-					bind:value={target}
+					bind:value={manager.target}
 					onkeypress={handleKeyPress}
 				/>
 			</div>
 
-			<SelectLevel bind:level />
+			<div class="input-group" style="max-width: 300px;">
+				<span class="input-group-text bg-dark text-light border-secondary">
+					<i class="bi bi-tag-fill"></i>
+				</span>
+				<input
+					type="text"
+					class="form-control"
+					placeholder="Message"
+					bind:value={manager.message}
+					onkeypress={handleKeyPress}
+				/>
+			</div>
+
+			<SelectLevel bind:level={manager.level} onChange={handleSearch} />
 
 			<button class="btn btn-primary" onclick={handleSearch}>
 				<i class="bi bi-search"></i>

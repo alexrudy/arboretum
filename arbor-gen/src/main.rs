@@ -17,7 +17,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 #[command(about = "Generate sample traces and logs for Arboretum")]
 struct Args {
     /// OTLP endpoint URL
-    #[arg(short, long, default_value = "http://localhost:3333")]
+    #[arg(short, long, envvar = "ARBORETUM_LISTEN_ADDR")]
     endpoint: String,
 
     /// Service name for traces

@@ -1,9 +1,6 @@
 use crate::config::Config;
 use crate::db::Database;
-use crate::handlers::{
-    AppState, export_logs, export_traces, get_metadata, query_logs, query_records,
-    query_span_events, query_spans,
-};
+use crate::handlers::{AppState, export_logs, export_traces, get_metadata, query_records};
 use axum::{
     Router,
     routing::{get, post},
@@ -24,6 +21,7 @@ pub fn create_router(db: Database) -> Router {
 
     // Create a permissive CORS layer for development
     let cors = if cfg!(debug_assertions) {
+        info!("Enabling permissive CORS");
         CorsLayer::permissive()
     } else {
         CorsLayer::new()
@@ -32,9 +30,6 @@ pub fn create_router(db: Database) -> Router {
     Router::new()
         .route("/v1/logs", post(export_logs))
         .route("/v1/traces", post(export_traces))
-        .route("/api/v1/logs", get(query_logs))
-        .route("/api/v1/spans", get(query_spans))
-        .route("/api/v1/events", get(query_span_events))
         .route("/api/v1/records", get(query_records))
         .route("/api/v1/metadata", get(get_metadata))
         .with_state(state)

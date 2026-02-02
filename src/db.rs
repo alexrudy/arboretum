@@ -259,8 +259,8 @@ impl Database {
             let mut query = String::from("SELECT id, timestamp, service_name, level, target, message, span_id, trace_id, attributes FROM logs WHERE 1=1");
             let mut params: Vec<Box<dyn tokio_rusqlite::rusqlite::ToSql>> = Vec::new();
 
-            filter.cursor.filter_query(&mut query, &mut params);
-            filter.common.filter_query(&mut query, &mut params);
+            filter.cursor.filter_logs(&mut query, &mut params);
+            filter.common.filter_logs(&mut query, &mut params);
 
 
             if let Some(span_id) = &filter.span_id {
@@ -304,7 +304,7 @@ impl Database {
             let mut params: Vec<Box<dyn tokio_rusqlite::rusqlite::ToSql>> = Vec::new();
 
             filter.cursor.filter_spans(&mut query, &mut params);
-            filter.common.filter_query(&mut query, &mut params);
+            filter.common.filter_spans(&mut query, &mut params);
 
 
             if let Some(span_id) = &filter.span_id {
@@ -415,8 +415,8 @@ impl Database {
             let mut query = String::from("SELECT span_id, trace_id, service_name, name, timestamp, level, target, attributes FROM span_events WHERE 1=1");
             let mut params: Vec<Box<dyn tokio_rusqlite::rusqlite::ToSql>> = Vec::new();
 
-            filter.cursor.filter_query(&mut query, &mut params);
-            filter.common.filter_query(&mut query, &mut params);
+            filter.cursor.filter_events(&mut query, &mut params);
+            filter.common.filter_events(&mut query, &mut params);
             if let Some(span_id) = &filter.span_id {
                 query.push_str(" AND span_id = ?");
                 params.push(Box::new(span_id.clone()));
@@ -592,11 +592,28 @@ pub struct SpanEventRecord {
 #[derive(Debug, Clone, Default)]
 pub struct CursorFilter {
     pub lookback_seconds: Option<i64>,
-    pub starting_at: Option<i64>,
+    pub since: Option<i64>,
+    pub until: Option<i64>,
 }
 
 impl CursorFilter {
-    pub fn filter_query(
+    pub fn filter_events(
+        &self,
+        query: &mut String,
+        params: &mut Vec<Box<dyn tokio_rusqlite::rusqlite::ToSql>>,
+    ) {
+        self.filter_query(query, params)
+    }
+
+    pub fn filter_logs(
+        &self,
+        query: &mut String,
+        params: &mut Vec<Box<dyn tokio_rusqlite::rusqlite::ToSql>>,
+    ) {
+        self.filter_query(query, params)
+    }
+
+    fn filter_query(
         &self,
         query: &mut String,
         params: &mut Vec<Box<dyn tokio_rusqlite::rusqlite::ToSql>>,
@@ -611,10 +628,16 @@ impl CursorFilter {
             ));
         }
 
-        if let Some(after) = self.starting_at {
+        if let Some(after) = self.since {
             tracing::debug!(%after, "Applying starting_at filter");
             query.push_str(" AND timestamp > ?");
             params.push(Box::new(after));
+        }
+
+        if let Some(before) = self.until {
+            tracing::debug!(%before, "Applying ending_at filter");
+            query.push_str(" AND timestamp < ?");
+            params.push(Box::new(before));
         }
     }
 
@@ -633,10 +656,16 @@ impl CursorFilter {
             ));
         }
 
-        if let Some(after) = self.starting_at {
+        if let Some(after) = self.since {
             tracing::debug!(%after, "Applying starting_at filter");
             query.push_str(" AND start_time > ?");
             params.push(Box::new(after));
+        }
+
+        if let Some(before) = self.until {
+            tracing::debug!(%before, "Applying ending_at filter");
+            query.push_str(" AND end_time < ?");
+            params.push(Box::new(before));
         }
     }
 }
@@ -647,10 +676,12 @@ pub struct CommonFilters {
     pub level: Option<Level>,
     pub target: Option<String>,
     pub message: Option<String>,
+    pub span_id: Option<String>,
+    pub trace_id: Option<String>,
 }
 
 impl CommonFilters {
-    pub fn filter_query(
+    fn filter_common(
         &self,
         query: &mut String,
         params: &mut Vec<Box<dyn tokio_rusqlite::rusqlite::ToSql>>,
@@ -671,6 +702,47 @@ impl CommonFilters {
             params.push(Box::new(target.clone()));
         }
 
+        if let Some(span_id) = &self.span_id {
+            query.push_str(" AND span_id = ?");
+            params.push(Box::new(span_id.clone()));
+        }
+
+        if let Some(trace_id) = &self.trace_id {
+            query.push_str(" AND trace_id = ?");
+            params.push(Box::new(trace_id.clone()));
+        }
+    }
+
+    pub fn filter_spans(
+        &self,
+        query: &mut String,
+        params: &mut Vec<Box<dyn tokio_rusqlite::rusqlite::ToSql>>,
+    ) {
+        self.filter_common(query, params);
+        if let Some(message) = &self.message {
+            query.push_str(" AND name LIKE ?");
+            params.push(Box::new(format!("%{message}%")));
+        }
+    }
+
+    pub fn filter_events(
+        &self,
+        query: &mut String,
+        params: &mut Vec<Box<dyn tokio_rusqlite::rusqlite::ToSql>>,
+    ) {
+        self.filter_common(query, params);
+        if let Some(message) = &self.message {
+            query.push_str(" AND name LIKE ?");
+            params.push(Box::new(format!("%{message}%")));
+        }
+    }
+
+    pub fn filter_logs(
+        &self,
+        query: &mut String,
+        params: &mut Vec<Box<dyn tokio_rusqlite::rusqlite::ToSql>>,
+    ) {
+        self.filter_common(query, params);
         if let Some(message) = &self.message {
             query.push_str(" AND message LIKE ?");
             params.push(Box::new(format!("%{message}%")));

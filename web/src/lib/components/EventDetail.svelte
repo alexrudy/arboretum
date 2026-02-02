@@ -1,11 +1,14 @@
 <script lang="ts">
-	import type { EventRecord } from '$lib/api';
+	import type { EventRecord, LogOrSpan } from '$lib/api';
 	import LevelBadge from './ui/LevelBadge.svelte';
 	import DetailItem from './ui/DetailItem.svelte';
 	import AttributesDisplay from './ui/AttributesDisplay.svelte';
 	import { formatTimestamp, formatTimestampFull } from '$lib/utils';
 
-	let { record: event }: { record: EventRecord } = $props();
+	let {
+		record: event,
+		expandedRecordId = $bindable()
+	}: { record: EventRecord; expandedRecordId: string | null } = $props();
 
 	let timestamp = $derived(formatTimestamp(event.timestamp));
 	let fullTimestamp = $derived(formatTimestampFull(event.timestamp));
@@ -26,7 +29,15 @@
 		</DetailItem>
 
 		<DetailItem label="Span ID" className="col-md-6">
-			<code class="text-info">{event.span_id}</code>
+			<a
+				href={`#span-${event.span_id}`}
+				class="span-link"
+				onclick={() => {
+					expandedRecordId = `#span-${event.span_id}`;
+				}}
+			>
+				<code class="text-info">{event.span_id}</code>
+			</a>
 		</DetailItem>
 
 		<DetailItem label="Trace ID" className="col-md-6">

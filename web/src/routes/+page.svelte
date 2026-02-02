@@ -7,8 +7,14 @@
 	import EventDetail from '$lib/components/EventDetail.svelte';
 	import MetadataFooter from '$lib/components/MetadataFooter.svelte';
 	import { api, Levels } from '$lib/api';
-	import { manager } from '$lib/manager.svelte';
-	import type { LogOrSpan, Level, DatabaseStats, PaginatedResponse } from '$lib/api';
+	import { ArboretumManager } from '$lib/manager.svelte';
+	import type {
+		LogOrSpan,
+		Level,
+		DatabaseStats,
+		PaginatedResponse,
+		GetRecordParams
+	} from '$lib/api';
 	import { getRecordID } from '$lib/types';
 	import ViewFilters from '$lib/components/ViewFilters.svelte';
 
@@ -19,30 +25,18 @@
 	let followMode = $state(true); // Auto-scroll to latest records
 	let isAtBottom = $state(true); // Track if scrolled to bottom
 
-	// Search parameters
-	let serviceName = $state('');
-	let target = $state('');
-	let level = $state<Level | null>(null);
 	let showSpans = $state(true);
 	let showLogs = $state(true);
 	let showOnlyRootSpans = $state(false);
 	let showEvents = $state(true);
+
+	const manager = new ArboretumManager(api);
 
 	const AUTO_REFRESH_INTERVAL = 2000; // Refresh every 2 seconds when at bottom
 	const METADATA_REFRESH_INTERVAL = 5000; // Refresh metadata every 5 seconds
 	const BUFFER_SIZE = 200; // Number of items to render above/below visible area
 
 	function applySearchFilters(record: LogOrSpan): boolean {
-		if (serviceName !== '' && record.service_name !== serviceName) {
-			return false;
-		}
-		if (target !== '' && !record.target?.includes(target)) {
-			return false;
-		}
-		if (level && record.level && Levels.indexOf(record.level) < Levels.indexOf(level)) {
-			return false;
-		}
-
 		if (!showEvents && record.type === 'event') {
 			return false;
 		}
@@ -102,31 +96,13 @@
 		}
 	}
 
-	function handleSearch(detail: { serviceName: string; target: string; level: Level | null }) {
-		serviceName = detail.serviceName;
-		target = detail.target;
-		level = detail.level;
+	function handleSearch(params: GetRecordParams) {
+		manager.loadRecords({ replace: true });
 	}
 
 	function handleRecordClick(record: LogOrSpan) {
 		let recordId = getRecordID(record);
 
-		// Find the record index in the full records array
-		let recordIndex = -1;
-		if (record.type === 'span') {
-			recordIndex = manager.records.findIndex(
-				(r) => r.type === 'span' && r.span_id === record.span_id
-			);
-		} else if (record.type === 'log') {
-			recordIndex = manager.records.findIndex(
-				(r) => r.type === 'log' && r.timestamp === record.timestamp
-			);
-		} else {
-			recordIndex = manager.records.findIndex(
-				(r) =>
-					r.type === 'event' && r.timestamp === record.timestamp && r.span_id === record.span_id
-			);
-		}
 		// Disable follow mode when jumping to a specific record
 		followMode = false;
 
@@ -156,7 +132,7 @@
 	}
 
 	onMount(() => {
-		manager.checkForNewRecords();
+		manager.loadRecords({});
 		loadMetadata();
 
 		// Add scroll listener
@@ -167,7 +143,7 @@
 		// Auto-refresh for new records when at bottom
 		const autoRefreshInterval = setInterval(() => {
 			if (isAtBottom && followMode) {
-				manager.checkForNewRecords();
+				manager.loadRecords({});
 			}
 		}, AUTO_REFRESH_INTERVAL);
 
@@ -185,7 +161,7 @@
 </script>
 
 <div class="d-flex flex-column vh-100">
-	<NavigationBar bind:serviceName bind:target bind:level onsearch={handleSearch}>
+	<NavigationBar {manager}>
 		<!-- View controls -->
 		<ViewFilters
 			bind:root={showOnlyRootSpans}
@@ -238,7 +214,7 @@
 									{:else if record.type === 'span'}
 										<SpanDetail span={record} {handleRecordClick} />
 									{:else if record.type === 'event'}
-										<EventDetail {record} />
+										<EventDetail {record} bind:expandedRecordId />
 									{/if}
 								</div>
 							{/if}

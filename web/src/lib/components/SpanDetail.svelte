@@ -1,11 +1,11 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import type { SpanRecord, EventRecord, LogOrSpan } from '$lib/api';
 	import { api } from '$lib/api';
 	import { formatDuration } from '$lib/utils';
 	import SpanTree from './SpanTree.svelte';
 	import SpanEventList from './SpanEventList.svelte';
 	import DetailItem from './ui/DetailItem.svelte';
-	import { manager } from '$lib/manager.svelte';
 	import AttributesDisplay from './ui/AttributesDisplay.svelte';
 
 	let {
@@ -13,12 +13,21 @@
 		handleRecordClick
 	}: { span: SpanRecord; handleRecordClick: (record: LogOrSpan) => void } = $props();
 
-	const records = $derived.by(() => manager.getTrace(span.trace_id));
+	let records: LogOrSpan[] = $state([]);
 	const allEvents = $derived.by(() => records.filter((record) => record.type === 'event'));
 	const allSpans = $derived.by(() => records.filter((record) => record.type === 'span'));
 	let attributesExpanded = $state(false);
 
 	let duration = $derived(formatDuration(span.start_time, span.end_time));
+
+	async function loadRecords() {
+		const response = await api.getRecords({ trace_id: span.trace_id });
+		records = response.records;
+	}
+
+	onMount(() => {
+		loadRecords();
+	});
 </script>
 
 <div class="card-body">

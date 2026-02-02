@@ -22,21 +22,21 @@ pub struct PaginatedResponse {
     /// Records in this page
     pub records: Vec<RecordResponse>,
     /// Cursor for next page (if available)
-    pub cursor: Option<i64>,
+    pub since: Option<i64>,
 }
 
 impl PaginatedResponse {
     fn from_records(mut records: Vec<RecordResponse>, max_records: usize) -> Self {
         records.truncate(max_records);
-        let cursor = records.iter().map(|r| r.timestamp()).max();
+        let since = records.iter().map(|r| r.timestamp()).max();
 
         if records.is_empty() {
             warn!("No records to include");
         } else {
-            debug!(cursor=%cursor.unwrap(), "fetched {} records", records.len());
+            debug!(cursor=%since.unwrap(), "fetched {} records", records.len());
         }
 
-        Self { records, cursor }
+        Self { records, since }
     }
 }
 
@@ -107,17 +107,6 @@ pub async fn export_traces(
     Ok(StatusCode::OK)
 }
 
-#[derive(Debug, Default, Deserialize)]
-pub struct LogQueryParams {
-    pub service_name: Option<String>,
-    pub level: Option<String>,
-    pub target: Option<String>,
-    pub message: Option<String>,
-    pub span_id: Option<String>,
-    pub lookback: Option<i64>,
-    pub cursor: Option<i64>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogResponse {
     pub timestamp: i64,
@@ -143,61 +132,6 @@ impl From<LogRecord> for LogResponse {
             attributes: log.attributes.and_then(|a| serde_json::from_str(&a).ok()),
         }
     }
-}
-
-pub async fn query_logs(
-    State(state): State<Arc<AppState>>,
-    Query(params): Query<LogQueryParams>,
-) -> Result<Json<PaginatedResponse>, AppError> {
-    let filter = LogFilter {
-        common: CommonFilters {
-            service_name: params.service_name,
-            level: params
-                .level
-                .map(|l| l.parse())
-                .transpose()
-                .map_err(|msg| AppError::BadRequest(format!("Invalid level: {msg}")))?,
-            target: params.target,
-            message: params.message,
-        },
-        cursor: CursorFilter {
-            lookback_seconds: params.lookback,
-            starting_at: params.cursor,
-        },
-        span_id: params.span_id,
-    };
-
-    let logs = state
-        .db
-        .query_logs(filter)
-        .await
-        .map_err(|e| AppError::Internal(format!("Database error: {}", e)))?;
-
-    let mut response: Vec<RecordResponse> = logs
-        .into_iter()
-        .map(|log| LogResponse::from(log).into())
-        .collect();
-
-    // Sort and deduplicate
-    response.sort_by(|a, b| a.cmp(b));
-    deduplicate_records(&mut response);
-
-    Ok(Json(PaginatedResponse::from_records(
-        response,
-        state.max_records_returned,
-    )))
-}
-
-#[derive(Debug, Default, Deserialize)]
-pub struct SpanQueryParams {
-    pub service_name: Option<String>,
-    pub level: Option<String>,
-    pub target: Option<String>,
-    pub message: Option<String>,
-    pub span_id: Option<String>,
-    pub trace_id: Option<String>,
-    pub lookback: Option<i64>,
-    pub cursor: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -239,62 +173,6 @@ impl From<SpanRecord> for SpanResponse {
     }
 }
 
-pub async fn query_spans(
-    State(state): State<Arc<AppState>>,
-    Query(params): Query<SpanQueryParams>,
-) -> Result<Json<PaginatedResponse>, AppError> {
-    let filter = SpanFilter {
-        common: CommonFilters {
-            service_name: params.service_name,
-            level: params
-                .level
-                .map(|l| l.parse())
-                .transpose()
-                .map_err(|msg| AppError::BadRequest(format!("Invalid level: {msg}")))?,
-            target: params.target,
-            message: params.message,
-        },
-        cursor: CursorFilter {
-            lookback_seconds: params.lookback,
-            starting_at: params.cursor,
-        },
-        span_id: params.span_id,
-        trace_id: params.trace_id,
-    };
-
-    let spans = state
-        .db
-        .query_spans(filter)
-        .await
-        .map_err(|e| AppError::Internal(format!("Database error: {}", e)))?;
-
-    let mut response: Vec<RecordResponse> = spans
-        .into_iter()
-        .map(|span| SpanResponse::from(span).into())
-        .collect();
-
-    // Sort and deduplicate (handles duplicates from get_spans_with_children)
-    response.sort_by(|a, b| a.cmp(b));
-    deduplicate_records(&mut response);
-
-    Ok(Json(PaginatedResponse::from_records(
-        response,
-        state.max_records_returned,
-    )))
-}
-
-#[derive(Debug, Default, Deserialize)]
-pub struct SpanEventQueryParams {
-    pub service_name: Option<String>,
-    pub level: Option<String>,
-    pub target: Option<String>,
-    pub message: Option<String>,
-    pub span_id: Option<String>,
-    pub trace_id: Option<String>,
-    pub lookback: Option<i64>,
-    pub cursor: Option<i64>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpanEventResponse {
     pub timestamp: i64,
@@ -322,50 +200,6 @@ impl From<SpanEventRecord> for SpanEventResponse {
     }
 }
 
-pub async fn query_span_events(
-    State(state): State<Arc<AppState>>,
-    Query(params): Query<SpanEventQueryParams>,
-) -> Result<Json<PaginatedResponse>, AppError> {
-    let filter = SpanEventFilter {
-        common: CommonFilters {
-            service_name: params.service_name,
-            level: params
-                .level
-                .map(|l| l.parse())
-                .transpose()
-                .map_err(|msg| AppError::BadRequest(format!("Invalid level: {msg}")))?,
-            target: params.target,
-            message: params.message,
-        },
-        cursor: CursorFilter {
-            lookback_seconds: params.lookback,
-            starting_at: params.cursor,
-        },
-        span_id: params.span_id,
-        trace_id: params.trace_id,
-    };
-
-    let events = state
-        .db
-        .query_span_events(filter)
-        .await
-        .map_err(|e| AppError::Internal(format!("Database error: {}", e)))?;
-
-    let mut response: Vec<RecordResponse> = events
-        .into_iter()
-        .map(|event| SpanEventResponse::from(event).into())
-        .collect();
-
-    // Sort and deduplicate
-    response.sort_by(|a, b| a.cmp(b));
-    deduplicate_records(&mut response);
-
-    Ok(Json(PaginatedResponse::from_records(
-        response,
-        state.max_records_returned,
-    )))
-}
-
 pub async fn get_metadata(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<crate::db::DatabaseStats>, AppError> {
@@ -384,8 +218,11 @@ pub struct RecordQueryParams {
     pub level: Option<String>,
     pub target: Option<String>,
     pub message: Option<String>,
+    pub span_id: Option<String>,
+    pub trace_id: Option<String>,
     pub lookback: Option<i64>,
-    pub cursor: Option<i64>,
+    pub since: Option<i64>,
+    pub until: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -497,10 +334,13 @@ pub async fn query_records(
             .map_err(|msg| AppError::BadRequest(format!("Invalid level: {msg}")))?,
         target: params.target,
         message: params.message,
+        span_id: params.span_id,
+        trace_id: params.trace_id,
     };
     let cursor = CursorFilter {
         lookback_seconds: params.lookback,
-        starting_at: params.cursor,
+        since: params.since,
+        until: params.until,
     };
 
     // Query logs
@@ -593,90 +433,17 @@ impl IntoResponse for AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::Database;
 
     #[test]
     fn test_parse_query() {
         let Query(params) = Query::<RecordQueryParams>::try_from_uri(
-            &("http://localhost:1234/api/v1/records?level=foo&cursor=5"
+            &("http://localhost:1234/api/v1/records?level=foo&since=5"
                 .parse()
                 .unwrap()),
         )
         .unwrap();
 
-        assert_eq!(dbg!(params).cursor, Some(5));
-    }
-
-    #[tokio::test]
-    async fn test_query_logs_endpoint() {
-        let db = Database::in_memory().await.unwrap();
-        let state = Arc::new(AppState::new(db.clone()));
-
-        let log = crate::db::LogRecord {
-            timestamp: 1234567890,
-            service_name: Some("test-service".to_string()),
-            level: Some(Level::Info),
-            target: Some("test::module".to_string()),
-            message: Some("Test message".to_string()),
-            span_id: None,
-            trace_id: None,
-            attributes: None,
-        };
-
-        db.insert_log(log).await.unwrap();
-
-        let params = LogQueryParams {
-            service_name: Some("test-service".to_string()),
-            ..Default::default()
-        };
-
-        let result = query_logs(State(state), Query(params)).await.unwrap();
-        assert_eq!(result.records.len(), 1);
-        match &result.records[0] {
-            RecordResponse::Log(log) => {
-                assert_eq!(log.service_name, Some("test-service".to_string()));
-            }
-            _ => panic!("Expected Log response"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_query_spans_endpoint() {
-        let db = Database::in_memory().await.unwrap();
-        let state = Arc::new(AppState::new(db.clone()));
-
-        let span = crate::db::SpanRecord {
-            trace_id: "abc123".to_string(),
-            span_id: "def456".to_string(),
-            parent_span_id: None,
-            service_name: Some("test-service".to_string()),
-            name: "test_span".to_string(),
-            kind: Some("internal".to_string()),
-            start_time: 1234567890,
-            end_time: Some(1234567900),
-            level: Some(Level::Info),
-            target: Some("test::module".to_string()),
-            attributes: None,
-            events: None,
-            status: None,
-        };
-
-        db.insert_span(span).await.unwrap();
-
-        let params = SpanQueryParams {
-            service_name: Some("test-service".to_string()),
-
-            ..Default::default()
-        };
-
-        let result = query_spans(State(state), Query(params)).await.unwrap();
-        assert_eq!(result.records.len(), 1);
-        match &result.records[0] {
-            RecordResponse::Span(span) => {
-                assert_eq!(span.name, "test_span");
-            }
-            _ => panic!("Expected Span response"),
-        }
+        assert_eq!(dbg!(params).since, Some(5));
     }
 
     #[test]

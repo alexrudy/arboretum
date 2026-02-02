@@ -7,19 +7,21 @@ The web frontend is a frontend for arboretum, a tool for exploring logs and span
 - A bottom bar which will display minimal metadata about arboretum
 
 For logs:
+
 - Show the timestamp, in the browser's local time
 - Show the log level, with colors
 - Show the log target
 - Show the log message
-Clicking on the log row should expand to a detail view which shows the remaining log attributes.
+  Clicking on the log row should expand to a detail view which shows the remaining log attributes.
 
 For spans:
+
 - Show the timestamp, in the browser's local time
 - Show the span level, with colors
 - Show the span target
 - Show the span message
-- Show the span 
-Clicking on the span should show a span tree diagram on top, and then the span attributes below. Clicking on each span element in the tree diagram should show the span attributes.
+- Show the span
+  Clicking on the span should show a span tree diagram on top, and then the span attributes below. Clicking on each span element in the tree diagram should show the span attributes.
 
 It should also be possible to promote attributes to the top level (so they are shown in the row with logs and spans)
 

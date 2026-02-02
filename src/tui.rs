@@ -426,7 +426,7 @@ impl App {
 struct BackgroundPoller {
     base_url: String,
     state: Arc<RwLock<SharedState>>,
-    cursor: Option<i64>,
+    since: Option<i64>,
     config: TuiConfig,
     client: Client,
 }
@@ -436,7 +436,7 @@ impl BackgroundPoller {
         Self {
             base_url,
             state,
-            cursor: None,
+            since: None,
             config,
             client: Client::new(),
         }
@@ -445,7 +445,7 @@ impl BackgroundPoller {
     async fn poll_once(&mut self) -> Result<(), reqwest::Error> {
         // Poll for new records using timestamp-based cursor
         // Use lookback of 10 seconds to ensure we don't miss records during polling
-        let url = if let Some(cursor) = self.cursor.as_ref() {
+        let url = if let Some(cursor) = self.since.as_ref() {
             format!("{}/api/v1/records?cursor={}", self.base_url, cursor)
         } else {
             format!(
@@ -465,11 +465,11 @@ impl BackgroundPoller {
             let filtered: Vec<RecordResponse> = paginated
                 .records
                 .into_iter()
-                .filter(|r| self.cursor.is_none_or(|c| r.timestamp() > c))
+                .filter(|r| self.since.is_none_or(|c| r.timestamp() > c))
                 .collect();
 
-            if paginated.cursor.is_some() {
-                self.cursor = paginated.cursor;
+            if paginated.since.is_some() {
+                self.since = paginated.since;
             }
 
             if !filtered.is_empty() {
