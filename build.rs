@@ -28,7 +28,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .set_path(concat!(env!("CARGO_MANIFEST_DIR"), "/web"))
         .with_env("PATH", path)
         .init_env()
-        .install(None)
+        .custom("install", Some(&["--include", "dev"]))
         .run("build")
         .exec()?;
     if exit_status.success() {
